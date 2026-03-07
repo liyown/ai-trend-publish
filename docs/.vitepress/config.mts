@@ -46,7 +46,7 @@ export default defineConfig({
       }
     ],
     socialLinks: [
-      { icon: "github", link: "https://github.com/OpenAISpace/ai-trend-publish" }
+      { icon: "github", link: "https://github.com/liyown/ai-trend-publish" }
     ],
     search: {
       provider: "local"

@@ -37,7 +37,7 @@ jobs:
           ssh -i ~/.ssh/id_rsa "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" "
             cd ~/app || mkdir -p ~/app && cd ~/app
             rm -rf ./* ./.* 2>/dev/null || true
-            git clone https://github.com/OpenAISpace/ai-trend-publish
+            git clone https://github.com/liyown/ai-trend-publish
             cd ai-trend-publish
           "
           scp -i ~/.ssh/id_rsa .env "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:~/app/ai-trend-publish/"

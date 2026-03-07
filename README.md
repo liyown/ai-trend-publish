@@ -38,7 +38,7 @@ curl -fsSL https://deno.land/install.sh | sh
 ### 2. 克隆项目
 
 ```bash
-git clone https://github.com/OpenAISpace/ai-trend-publish
+git clone https://github.com/liyown/ai-trend-publish
 cd ai-trend-publish
 ```
 
@@ -122,7 +122,7 @@ npm run docs:build
 ## 📝 文章模板
 
 TrendPublish 提供了多种精美的文章模板。查看
-[模板展示页面](https://openaispace.github.io/ai-trend-publish/templates)
+[模板展示页面](https://liyown.github.io/ai-trend-publish/templates)
 了解更多详情。
 
 ## DONE
@@ -178,7 +178,7 @@ TrendPublish 提供了多种精美的文章模板。查看
 1. 克隆项目
 
 ```bash
-git clone https://github.com/OpenAISpace/ai-trend-publish
+git clone https://github.com/liyown/ai-trend-publish
 ```
 
 2. 配置环境变量
@@ -247,7 +247,7 @@ curl -fsSL https://deno.land/install.sh | sh
 2. 克隆项目
 
 ```bash
-git clone https://github.com/OpenAISpace/ai-trend-publish.git
+git clone https://github.com/liyown/ai-trend-publish.git
 cd ai-trend-publish
 ```
 
@@ -285,7 +285,7 @@ pm2 save
 1. 拉取代码
 
 ```bash
-git clone https://github.com/OpenAISpace/ai-trend-publish.git
+git clone https://github.com/liyown/ai-trend-publish.git
 ```
 
 2. 构建 Docker 镜像：
@@ -362,7 +362,7 @@ npx ts-node -r tsconfig-paths/register src\modules\render\test\test.weixin.templ
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=OpenAISpace/ai-trend-publish&type=Date)](https://star-history.com/#OpenAISpace/ai-trend-publish&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=liyown/ai-trend-publish&type=Date)](https://star-history.com/#liyown/ai-trend-publish&Date)
 
 ## 📄 许可证
 
@@ -374,6 +374,6 @@ npx ts-node -r tsconfig-paths/register src\modules\render\test\test.weixin.templ
 
 - 端点: `/api/workflow`
 - 支持方法: `triggerWorkflow`
-- 详细文档: [JSON-RPC API 文档](https://openaispace.github.io/ai-trend-publish/api/json-rpc-api)
+- 详细文档: [JSON-RPC API 文档](https://liyown.github.io/ai-trend-publish/api/json-rpc-api)
 
 ![](https://oss.liuyaowen.cn/image/202504242031044.png)

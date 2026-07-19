@@ -3,7 +3,8 @@ import { useNavigate, useParams } from "@tanstack/react-router";
 import { Bug, ScrollText, Settings2 } from "lucide-react";
 import type { SaveContentPlanPayload } from "#platform/api/types.ts";
 import { useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
-import { useSaveContentPlan } from "./use-content-plans.ts";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { createContentPlan, updateContentPlan } from "#platform/api/content-plans.ts";
 import { Button } from "#components/ui/button.tsx";
 import { Tabs } from "#components/ui/tabs.tsx";
 import { capabilityConnections, ConfigView, type SectionId } from "./editor/config-view.tsx";
@@ -24,6 +25,15 @@ function emptyPlan(): SaveContentPlanPayload {
     researchConnections: { search: [], fetch: [] },
     publishing: { mode: "content_only", targetIds: [] },
   };
+}
+
+function useSaveContentPlan(planId?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SaveContentPlanPayload) =>
+      planId ? updateContentPlan(planId, body) : createContentPlan(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["content-plans"] }),
+  });
 }
 
 export function ContentPlanEditorPage() {

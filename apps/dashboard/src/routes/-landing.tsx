@@ -19,7 +19,7 @@ import {
   Sparkles,
   Workflow,
 } from "lucide-react";
-import { useAuth } from "../../app/auth.tsx";
+import { useAuth } from "../app/auth.tsx";
 import { Button } from "#components/ui/button.tsx";
 import { Input } from "#components/ui/input.tsx";
 

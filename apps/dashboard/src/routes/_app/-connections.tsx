@@ -1,12 +1,29 @@
+export function suggestConnectionName(baseName: string, existingNames: readonly string[]): string {
+  const base = baseName.trim();
+  const occupied = new Set(existingNames.map(normalizeConnectionName));
+  if (!occupied.has(normalizeConnectionName(base))) return base;
+
+  for (let index = 2; ; index += 1) {
+    const candidate = `${base} ${index}`;
+    if (!occupied.has(normalizeConnectionName(candidate))) return candidate;
+  }
+}
+
+function normalizeConnectionName(value: string): string {
+  return value.trim().toLocaleLowerCase();
+}
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  createConnection,
+  deleteConnection,
+  listConnections,
+  testConnection,
+  updateConnection,
+} from "#platform/api/connections.ts";
 import { useEffect, useMemo, useState } from "react";
 import { FlaskConical, Plus } from "lucide-react";
-import type {
-  Connection,
-  ConnectorDefinition,
-  JsonValue,
-  SaveConnectionPayload,
-} from "#platform/api/types.ts";
-import { useWorkspaceRefresh } from "#platform/api/use-workspace-snapshot.ts";
+
 import { Button } from "#components/ui/button.tsx";
 import { Input } from "#components/ui/input.tsx";
 import { NativeSelect } from "#components/ui/select.tsx";
@@ -15,15 +32,41 @@ import { AppDialog, AppDialogFooter } from "#components/product/app-dialog.tsx";
 import { FormField } from "#components/product/form-field.tsx";
 import { Badge } from "#components/ui/badge.tsx";
 import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
-import { FormError, describeError } from "#components/product/form-error.tsx";
+import { describeError, FormError } from "#components/product/form-error.tsx";
 import { PageGrid } from "#components/product/page-grid.tsx";
-import { suggestConnectionName } from "./connection-naming.ts";
-import {
-  useConnections,
-  useDeleteConnection,
-  useSaveConnection,
-  useTestConnection,
-} from "./use-connections.ts";
+import type {
+  Connection,
+  ConnectorDefinition,
+  JsonValue,
+  SaveConnectionPayload,
+} from "#platform/api/types.ts";
+
+export const connectionsKey = () => ["connections"] as const;
+
+export function useConnections() {
+  return useQuery({ queryKey: connectionsKey(), queryFn: listConnections });
+}
+
+export function useDeleteConnection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteConnection(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: connectionsKey() }),
+  });
+}
+
+export function useSaveConnection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id?: string; body: SaveConnectionPayload }) =>
+      id ? updateConnection(id, body) : createConnection(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: connectionsKey() }),
+  });
+}
+
+export function useTestConnection() {
+  return useMutation({ mutationFn: (body: SaveConnectionPayload) => testConnection(body) });
+}
 
 type Editor = { definition: ConnectorDefinition; connection?: Connection; suggestedName?: string };
 

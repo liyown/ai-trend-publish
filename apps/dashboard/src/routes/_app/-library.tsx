@@ -7,7 +7,7 @@ import type {
   StoredContentPackage,
   StoredReviewRequest,
 } from "#platform/api/types.ts";
-import { submitEditedArticle, startPublication } from "#platform/api/articles.ts";
+import { startPublication, submitEditedArticle } from "#platform/api/articles.ts";
 import { useWorkspaceRefresh, useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
 import { Button } from "#components/ui/button.tsx";
 import { Input } from "#components/ui/input.tsx";
@@ -19,7 +19,7 @@ import { Badge } from "#components/ui/badge.tsx";
 import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
 import { FormError } from "#components/product/form-error.tsx";
 import { PageGrid } from "#components/product/page-grid.tsx";
-import { ArticleDocumentView } from "./article-document-view.tsx";
+import { ArticleDocumentView } from "./library/article-document-view.tsx";
 
 export function LibraryPage() {
   const { data: workspace } = useWorkspaceSnapshot();

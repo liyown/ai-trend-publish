@@ -1,3 +1,3 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { PublishingPage } from "../../features/publishing/page.tsx";
+import { PublishingPage } from "./-publishing.tsx";
 export const Route = createFileRoute("/_app/publishing")({ component: PublishingPage });

@@ -1,6 +1,14 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  createAutomation,
+  deleteAutomation,
+  listAutomations,
+  startAutomationRun,
+  updateAutomation,
+} from "#platform/api/automations.ts";
 import { useEffect, useState } from "react";
 import { Play, Plus } from "lucide-react";
-import type { Automation, SaveAutomationPayload } from "#platform/api/types.ts";
+
 import { useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
 import { Button } from "#components/ui/button.tsx";
 import { Input } from "#components/ui/input.tsx";
@@ -13,12 +21,37 @@ import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
 import { FormError } from "#components/product/form-error.tsx";
 import { PageGrid } from "#components/product/page-grid.tsx";
 import { splitLines } from "#lib/utils.ts";
-import {
-  useAutomations,
-  useDeleteAutomation,
-  useSaveAutomation,
-  useStartAutomationRun,
-} from "./use-automations.ts";
+import type { Automation, SaveAutomationPayload } from "#platform/api/types.ts";
+
+export const automationsKey = () => ["automations"] as const;
+
+export function useAutomations() {
+  return useQuery({ queryKey: automationsKey(), queryFn: listAutomations });
+}
+
+export function useDeleteAutomation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteAutomation(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: automationsKey() }),
+  });
+}
+
+export function useSaveAutomation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id?: string; body: SaveAutomationPayload }) =>
+      id ? updateAutomation(id, body) : createAutomation(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: automationsKey() }),
+  });
+}
+
+export function useStartAutomationRun() {
+  return useMutation({
+    mutationFn: ({ id, body = {} }: { id: string; body?: { requestedTopic?: string } }) =>
+      startAutomationRun(id, body),
+  });
+}
 
 const emptyAutomation = (): SaveAutomationPayload => ({
   name: "",

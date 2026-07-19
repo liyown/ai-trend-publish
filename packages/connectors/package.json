@@ -1,0 +1,17 @@
+{
+  "name": "@trendpublish/connectors",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "vp check",
+    "test": "vp test --root ../.. packages/connectors/src"
+  },
+  "dependencies": {
+    "@trendpublish/contracts": "workspace:*",
+    "zod": "^3.25.76",
+    "zod-to-json-schema": "^3.25.2"
+  }
+}

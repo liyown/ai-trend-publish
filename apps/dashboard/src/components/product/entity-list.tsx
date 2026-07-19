@@ -4,10 +4,6 @@ import { Button } from "#components/ui/button.tsx";
 import { EmptyState } from "#components/product/empty-state.tsx";
 import { SetupObjectList } from "#components/product/setup-page-frame.tsx";
 
-export function StudioPage({ children }: { children: React.ReactNode }) {
-  return <div className="grid gap-4">{children}</div>;
-}
-
 export function EntityList({
   title,
   description,
@@ -90,30 +86,4 @@ export function EntityRow({
       </div>
     </div>
   );
-}
-
-export function FormError({ error }: { error: unknown }) {
-  if (!error) return null;
-  return (
-    <p className="rounded-[var(--radius-sm)] border border-[var(--danger-border)] bg-[var(--danger-bg)] px-3 py-2 text-xs text-[var(--danger)]">
-      {describeError(error)}
-    </p>
-  );
-}
-
-export function describeError(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  if (typeof error === "string") return error;
-  try {
-    return JSON.stringify(error) ?? "请求失败";
-  } catch {
-    return "请求失败";
-  }
-}
-
-export function splitLines(value: string): string[] {
-  return value
-    .split(/\r?\n/)
-    .map((item) => item.trim())
-    .filter(Boolean);
 }

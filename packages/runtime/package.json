@@ -1,0 +1,12 @@
+{
+  "name": "@trendpublish/runtime",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "vp check",
+    "test": "vp test"
+  }
+}

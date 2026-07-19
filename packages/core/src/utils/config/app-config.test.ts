@@ -1,59 +1,37 @@
-import { test } from "vite-plus/test";
-import { assertEquals, assertRejects } from "../../test/assert.ts";
-import {
-  ConfigurationError,
-  createConfigRuntime,
-  initializeAppConfig,
-  parseConfigArgs,
-} from "./app-config.ts";
-import { defineConfig } from "./define-config.ts";
+import { test, afterEach } from "vite-plus/test";
+import { assertEquals } from "../../test/assert.ts";
+import { initializeAppConfig } from "./app-config.ts";
 
-test("parseConfigArgs extracts --config and keeps application args", () => {
-  const parsed = parseConfigArgs([
-    "--config",
-    "./custom.config.ts",
-    "--dry-run",
-    "--max-articles",
-    "3",
-  ]);
-
-  assertEquals(parsed.configPath, "./custom.config.ts");
-  assertEquals(parsed.args, ["--dry-run", "--max-articles", "3"]);
+// 每条用例后清理注入的 env，避免测试间污染
+afterEach(() => {
+  for (const key of [
+    "TRENDPUBLISH_API_KEY",
+    "TRENDPUBLISH_PORT",
+    "TRENDPUBLISH_SQLITE_PATH",
+    "TRENDPUBLISH_ENV",
+    "OTEL_ENABLED",
+  ]) {
+    delete process.env[key];
+  }
 });
 
-test("parseConfigArgs supports --config=value", () => {
-  const parsed = parseConfigArgs(["--dry-run", "--config=./docker.config.ts"]);
+test("initializeAppConfig reads config from process.env", () => {
+  process.env.TRENDPUBLISH_API_KEY = "server-key";
+  process.env.TRENDPUBLISH_PORT = "9000";
+  process.env.TRENDPUBLISH_SQLITE_PATH = "data/test.sqlite3";
 
-  assertEquals(parsed.configPath, "./docker.config.ts");
-  assertEquals(parsed.args, ["--dry-run"]);
-});
-
-test("initializeAppConfig resolves runtime config factory", async () => {
-  const config = await initializeAppConfig({
-    source: defineConfig((runtime) => ({
-      server: {
-        apiKey: runtime.required("SERVER_API_KEY"),
-      },
-    })),
-    runtime: createConfigRuntime({
-      target: "docker",
-      values: {
-        SERVER_API_KEY: "server-key",
-      },
-    }),
-  });
+  const config = initializeAppConfig({ envFile: false });
 
   assertEquals(config.server.apiKey, "server-key");
-  assertEquals(config.database.sqlitePath, "data/trendpublish.sqlite3");
+  assertEquals(config.server.port, 9000);
+  assertEquals(config.database.sqlitePath, "data/test.sqlite3");
 });
 
-test("initializeAppConfig rejects missing explicit config path", async () => {
-  await assertRejects(
-    () =>
-      initializeAppConfig({
-        configPath: "/tmp/trendpublish-missing-config-file.ts",
-      }),
-    ConfigurationError,
-    "配置文件不存在",
-  );
+test("initializeAppConfig uses defaults when env vars are absent", () => {
+  const config = initializeAppConfig({ envFile: false });
+
+  assertEquals(config.server.apiKey, "");
+  assertEquals(config.server.port, 8000);
+  assertEquals(config.database.sqlitePath, "data/trendpublish.sqlite3");
+  assertEquals(config.observability.serviceName, "trendpublish");
 });

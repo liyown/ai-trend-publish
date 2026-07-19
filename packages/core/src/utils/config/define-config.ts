@@ -1,12 +1,3 @@
-export type ConfigRuntimeTarget = "local" | "docker" | "cloudflare";
-
-export interface ConfigRuntime {
-  target: ConfigRuntimeTarget;
-  value(name: string, fallback?: string): string;
-  secret(name: string, fallback?: string): string;
-  required(name: string): string;
-}
-
 export interface ServerConfig {
   apiKey?: string;
   port?: number;
@@ -51,11 +42,6 @@ export interface TrendPublishConfig {
   observability?: ObservabilityConfig;
 }
 
-export type TrendPublishConfigFactory = (
-  runtime: ConfigRuntime,
-) => TrendPublishConfig | Promise<TrendPublishConfig>;
-export type TrendPublishConfigSource = TrendPublishConfig | TrendPublishConfigFactory;
-
 export interface ResolvedTrendPublishConfig {
   server: { apiKey: string; port: number };
   database: { sqlitePath: string };
@@ -88,51 +74,43 @@ export interface ResolvedTrendPublishConfig {
   };
 }
 
-export function defineConfig(config: TrendPublishConfig): TrendPublishConfig;
-export function defineConfig(config: TrendPublishConfigFactory): TrendPublishConfigFactory;
-export function defineConfig(config: TrendPublishConfigSource): TrendPublishConfigSource {
-  return config;
-}
+const DEFAULT_HTTP: ResolvedTrendPublishConfig["observability"]["http"] = {
+  enabled: false,
+  endpoint: "",
+  bearerToken: "",
+  headers: {},
+  format: "object",
+  timeoutMs: 5000,
+};
+
+const DEFAULT_AXIOM: ResolvedTrendPublishConfig["observability"]["axiom"] = {
+  enabled: false,
+  dataset: "",
+  token: "",
+  apiUrl: "https://api.axiom.co",
+  timeoutMs: 5000,
+};
+
+const DEFAULT_BETTERSTACK: ResolvedTrendPublishConfig["observability"]["betterStack"] = {
+  enabled: false,
+  sourceToken: "",
+  ingestingHost: "https://in.logs.betterstack.com",
+  timeoutMs: 5000,
+};
 
 export function resolveTrendPublishConfig(config: TrendPublishConfig): ResolvedTrendPublishConfig {
+  const obs = config.observability ?? {};
   return {
-    server: {
-      apiKey: config.server?.apiKey ?? "",
-      port: config.server?.port ?? 8000,
-    },
-    database: {
-      sqlitePath: config.database?.sqlitePath ?? "data/trendpublish.sqlite3",
-    },
+    server: { apiKey: config.server?.apiKey ?? "", port: config.server?.port ?? 8000 },
+    database: { sqlitePath: config.database?.sqlitePath ?? "data/trendpublish.sqlite3" },
     observability: {
-      enabled: config.observability?.enabled ?? true,
-      serviceName: config.observability?.serviceName ?? "trendpublish",
-      environment: config.observability?.environment ?? "local",
-      stdout: {
-        enabled: config.observability?.stdout?.enabled ?? false,
-        format: config.observability?.stdout?.format ?? "json",
-      },
-      http: {
-        enabled: config.observability?.http?.enabled ?? false,
-        endpoint: config.observability?.http?.endpoint ?? "",
-        bearerToken: config.observability?.http?.bearerToken ?? "",
-        headers: config.observability?.http?.headers ?? {},
-        format: config.observability?.http?.format ?? "object",
-        timeoutMs: config.observability?.http?.timeoutMs ?? 5000,
-      },
-      axiom: {
-        enabled: config.observability?.axiom?.enabled ?? false,
-        dataset: config.observability?.axiom?.dataset ?? "",
-        token: config.observability?.axiom?.token ?? "",
-        apiUrl: config.observability?.axiom?.apiUrl ?? "https://api.axiom.co",
-        timeoutMs: config.observability?.axiom?.timeoutMs ?? 5000,
-      },
-      betterStack: {
-        enabled: config.observability?.betterStack?.enabled ?? false,
-        sourceToken: config.observability?.betterStack?.sourceToken ?? "",
-        ingestingHost:
-          config.observability?.betterStack?.ingestingHost ?? "https://in.logs.betterstack.com",
-        timeoutMs: config.observability?.betterStack?.timeoutMs ?? 5000,
-      },
+      enabled: obs.enabled ?? true,
+      serviceName: obs.serviceName ?? "trendpublish",
+      environment: obs.environment ?? "local",
+      stdout: { enabled: obs.stdout?.enabled ?? false, format: obs.stdout?.format ?? "json" },
+      http: { ...DEFAULT_HTTP, ...obs.http },
+      axiom: { ...DEFAULT_AXIOM, ...obs.axiom },
+      betterStack: { ...DEFAULT_BETTERSTACK, ...obs.betterStack },
     },
   };
 }

@@ -16,97 +16,50 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Deno
-        uses: denoland/setup-deno@v2
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
         with:
-          deno-version: v2.7.14
+          node-version: 24
+          cache: true
 
-      - name: Cache Dependencies
-        run: |
-          deno cache src/index.ts
+      - name: Install dependencies
+        run: vp install
 
       - name: Verify
-        run: deno task verify
+        run: vp run verify
 
-      - name: Create dist directory
-        run: mkdir -p dist
-
-      - name: Build All Platforms
+      - name: Build release bundle
         run: |
-          VERSION=${{ github.event.release.tag_name }}
-
-          # Windows (x64)
-          deno compile --allow-env --allow-ffi --allow-read --allow-sys --allow-net \
-            --target x86_64-pc-windows-msvc \
-            --output dist/trendFinder-${VERSION}-windows-x64.exe \
-            --icon ./docs/images/main.ico \
-            --include src/features/weixin-article/rendering/templates \
-            src/index.ts
-
-          # macOS (x64)
-          deno compile --allow-env --allow-ffi --allow-read --allow-sys --allow-net \
-            --target x86_64-apple-darwin \
-            --output dist/trendFinder-${VERSION}-mac-x64 \
-            --include src/features/weixin-article/rendering/templates \
-            src/index.ts
-
-          # macOS (ARM64)
-          deno compile --allow-env --allow-ffi --allow-read --allow-sys --allow-net \
-            --target aarch64-apple-darwin \
-            --output dist/trendFinder-${VERSION}-mac-arm64 \
-            --include src/features/weixin-article/rendering/templates \
-            src/index.ts
-
-          # Linux (x64)
-          deno compile --allow-env --allow-ffi --allow-read --allow-sys --allow-net \
-            --target x86_64-unknown-linux-gnu \
-            --output dist/trendFinder-${VERSION}-linux-x64 \
-            --include src/features/weixin-article/rendering/templates \
-            src/index.ts
-
-          # Linux (ARM64)
-          deno compile --allow-env --allow-ffi --allow-read --allow-sys --allow-net \
-            --target aarch64-unknown-linux-gnu \
-            --output dist/trendFinder-${VERSION}-linux-arm64 \
-            --include src/features/weixin-article/rendering/templates \
-            src/index.ts
-
-      - name: Compress Release Assets
-        run: |
-          VERSION=${{ github.event.release.tag_name }}
-          cd dist
-
-          # Create archives
-          zip trendFinder-${VERSION}-windows-x64.zip trendFinder-${VERSION}-windows-x64.exe
-          tar czf trendFinder-${VERSION}-mac-x64.tar.gz trendFinder-${VERSION}-mac-x64
-          tar czf trendFinder-${VERSION}-mac-arm64.tar.gz trendFinder-${VERSION}-mac-arm64
-          tar czf trendFinder-${VERSION}-linux-x64.tar.gz trendFinder-${VERSION}-linux-x64
-          tar czf trendFinder-${VERSION}-linux-arm64.tar.gz trendFinder-${VERSION}-linux-arm64
-
-          # Generate SHA256 checksums
-          sha256sum trendFinder-${VERSION}-windows-x64.zip > trendFinder-${VERSION}-windows-x64.zip.sha256
-          sha256sum trendFinder-${VERSION}-mac-x64.tar.gz > trendFinder-${VERSION}-mac-x64.tar.gz.sha256
-          sha256sum trendFinder-${VERSION}-mac-arm64.tar.gz > trendFinder-${VERSION}-mac-arm64.tar.gz.sha256
-          sha256sum trendFinder-${VERSION}-linux-x64.tar.gz > trendFinder-${VERSION}-linux-x64.tar.gz.sha256
-          sha256sum trendFinder-${VERSION}-linux-arm64.tar.gz > trendFinder-${VERSION}-linux-arm64.tar.gz.sha256
+          VERSION=${{ github.event.release.tag_name || github.ref_name }}
+          mkdir -p dist/release/trendpublish-${VERSION}
+          cp -R \
+            package.json \
+            pnpm-lock.yaml \
+            pnpm-workspace.yaml \
+            README.md \
+            CHANGELOG.md \
+            apps \
+            dist/dashboard \
+            docs \
+            migrations \
+            packages \
+            scripts \
+            tests \
+            trendpublish.config.example.ts \
+            trendpublish.config.docker.example.ts \
+            trendpublish.config.cloudflare.ts \
+            tsconfig.json \
+            vite.config.ts \
+            vitest.config.ts \
+            wrangler.jsonc \
+            dist/release/trendpublish-${VERSION}/
+          tar -C dist/release -czf dist/trendpublish-${VERSION}.tar.gz trendpublish-${VERSION}
+          sha256sum dist/trendpublish-${VERSION}.tar.gz > dist/trendpublish-${VERSION}.tar.gz.sha256
 
       - name: Upload Release Assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION=${{ github.event.release.tag_name }}
-          cd dist
-
-          # Upload archives
-          gh release upload $VERSION trendFinder-${VERSION}-windows-x64.zip
-          gh release upload $VERSION trendFinder-${VERSION}-mac-x64.tar.gz
-          gh release upload $VERSION trendFinder-${VERSION}-mac-arm64.tar.gz
-          gh release upload $VERSION trendFinder-${VERSION}-linux-x64.tar.gz
-          gh release upload $VERSION trendFinder-${VERSION}-linux-arm64.tar.gz
-
-          # Upload checksums
-          gh release upload $VERSION trendFinder-${VERSION}-windows-x64.zip.sha256
-          gh release upload $VERSION trendFinder-${VERSION}-mac-x64.tar.gz.sha256
-          gh release upload $VERSION trendFinder-${VERSION}-mac-arm64.tar.gz.sha256
-          gh release upload $VERSION trendFinder-${VERSION}-linux-x64.tar.gz.sha256
-          gh release upload $VERSION trendFinder-${VERSION}-linux-arm64.tar.gz.sha256
+          VERSION=${{ github.event.release.tag_name || github.ref_name }}
+          gh release upload "$VERSION" "dist/trendpublish-${VERSION}.tar.gz" --clobber
+          gh release upload "$VERSION" "dist/trendpublish-${VERSION}.tar.gz.sha256" --clobber

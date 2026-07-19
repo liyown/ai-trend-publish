@@ -1,0 +1,17 @@
+{
+  "name": "@trendpublish/contracts",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./article": "./src/article.ts",
+    "./connectors": "./src/connectors.ts",
+    "./execution": "./src/execution.ts",
+    "./json": "./src/json.ts",
+    "./publishing": "./src/publishing.ts",
+    "./workspace": "./src/workspace.ts"
+  },
+  "scripts": {
+    "check": "vp check"
+  }
+}

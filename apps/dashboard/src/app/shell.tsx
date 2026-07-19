@@ -25,7 +25,7 @@ import {
 const SIDEBAR_COLLAPSED_KEY = "trendpublish.sidebar.collapsed";
 
 export function WorkspaceShell() {
-  const { apiKey, logout } = useAuth();
+  const { logout } = useAuth();
   const [navOpen, setNavOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(readSidebarCollapsed);
@@ -46,7 +46,7 @@ export function WorkspaceShell() {
 
   const refreshWorkspace = () =>
     void queryClient.invalidateQueries({
-      queryKey: dashboardQueryKeys(apiKey).root,
+      queryKey: dashboardQueryKeys().root,
     });
 
   const toggleCollapsed = () => {

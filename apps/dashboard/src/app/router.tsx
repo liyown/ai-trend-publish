@@ -1,4 +1,3 @@
-import { lazy, Suspense } from "react";
 import {
   createRootRoute,
   createRoute,
@@ -8,62 +7,22 @@ import {
 } from "@tanstack/react-router";
 import { useAuth } from "./auth.tsx";
 import { WorkspaceShell } from "./shell.tsx";
-
-const LandingPage = lazy(() =>
-  import("../routes/index.tsx").then((module) => ({ default: module.LandingPage })),
-);
-const WorkspacePage = lazy(() =>
-  import("../routes/workspace.tsx").then((module) => ({ default: module.WorkspacePage })),
-);
-const AutomationsPage = lazy(() =>
-  import("../routes/automations.tsx").then((module) => ({ default: module.AutomationsPage })),
-);
-const IdentitiesPage = lazy(() =>
-  import("../routes/identities.tsx").then((module) => ({ default: module.IdentitiesPage })),
-);
-const SourcesPage = lazy(() =>
-  import("../routes/sources.tsx").then((module) => ({ default: module.SourcesPage })),
-);
-const KnowledgePage = lazy(() =>
-  import("../routes/knowledge.tsx").then((module) => ({ default: module.KnowledgePage })),
-);
-const ContentPlansPage = lazy(() =>
-  import("../routes/content-plans.tsx").then((module) => ({ default: module.ContentPlansPage })),
-);
-const ContentPlanEditorPage = lazy(() =>
-  import("../routes/content-plan-editor.tsx").then((module) => ({
-    default: module.ContentPlanEditorPage,
-  })),
-);
-const PublishingPage = lazy(() =>
-  import("../routes/publishing.tsx").then((module) => ({ default: module.PublishingPage })),
-);
-const JobsPage = lazy(() =>
-  import("../routes/jobs.tsx").then((module) => ({ default: module.JobsPage })),
-);
-const LibraryPage = lazy(() =>
-  import("../routes/library.tsx").then((module) => ({ default: module.LibraryPage })),
-);
-const ConnectionsPage = lazy(() =>
-  import("../routes/connections.tsx").then((module) => ({ default: module.ConnectionsPage })),
-);
-const SettingsPage = lazy(() =>
-  import("../routes/settings.tsx").then((module) => ({ default: module.SettingsPage })),
-);
+import { LandingPage } from "../features/landing/page.tsx";
+import { WorkspacePage } from "../features/workspace/page.tsx";
+import { AutomationsPage } from "../features/automations/page.tsx";
+import { IdentitiesPage } from "../features/identities/page.tsx";
+import { SourcesPage } from "../features/sources/page.tsx";
+import { KnowledgePage } from "../features/knowledge/page.tsx";
+import { ContentPlansPage } from "../features/content-plans/page.tsx";
+import { ContentPlanEditorPage } from "../features/content-plans/editor-page.tsx";
+import { PublishingPage } from "../features/publishing/page.tsx";
+import { JobsPage } from "../features/jobs/page.tsx";
+import { LibraryPage } from "../features/library/page.tsx";
+import { ConnectionsPage } from "../features/connections/page.tsx";
+import { SettingsPage } from "../features/settings/page.tsx";
 
 function LandingRoute() {
-  return (
-    <Suspense fallback={<Loading />}>
-      <LandingPage />
-    </Suspense>
-  );
-}
-function Loading() {
-  return (
-    <div className="grid min-h-dvh place-items-center bg-[var(--paper)] text-sm font-semibold">
-      Loading TrendPublish
-    </div>
-  );
+  return <LandingPage />;
 }
 function Protected() {
   return useAuth().isAuthenticated ? <WorkspaceShell /> : <Navigate to="/" replace />;

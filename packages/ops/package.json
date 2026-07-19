@@ -1,0 +1,22 @@
+{
+  "name": "@trendpublish/ops",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./cloudflare-smoke": "./src/cloudflare-smoke.ts",
+    "./cloudflare-sync-secrets": "./src/cloudflare-sync-secrets.ts",
+    "./doctor": "./src/doctor.ts",
+    "./install-relay-systemd": "./src/install-relay-systemd.ts",
+    "./print-relay-systemd": "./src/print-relay-systemd.ts"
+  },
+  "scripts": {
+    "check": "vp check",
+    "test": "vp test"
+  },
+  "dependencies": {
+    "@trendpublish/contracts": "workspace:*",
+    "@trendpublish/core": "workspace:*",
+    "@trendpublish/runtime": "workspace:*",
+    "@trendpublish/server": "workspace:*"
+  }
+}

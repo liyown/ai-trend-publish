@@ -1,5 +1,5 @@
 import { JobStatus } from "@trendpublish/runtime";
-import { initializeAppConfig, parseConfigArgs } from "@trendpublish/core/config";
+import { initializeAppConfig } from "@trendpublish/core/config";
 
 interface SmokeArgs {
   url: string;
@@ -24,8 +24,7 @@ interface JobResponse {
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {
-  const { configPath, args } = parseConfigArgs(argv);
-  await runSmoke(await parseSmokeArgs(args, configPath));
+  await runSmoke(await parseSmokeArgs(argv));
 }
 
 if (import.meta.main) await main();
@@ -96,7 +95,7 @@ async function requestJson<T>(
   return json as T;
 }
 
-async function parseSmokeArgs(args: string[], configPath?: string): Promise<SmokeArgs> {
+async function parseSmokeArgs(args: string[]): Promise<SmokeArgs> {
   const values = new Map<string, string>();
   for (let index = 0; index < args.length; index++) {
     const arg = args[index];
@@ -107,13 +106,9 @@ async function parseSmokeArgs(args: string[], configPath?: string): Promise<Smok
     else values.set(key, "true");
   }
   const url = values.get("url") ?? process.env.TRENDPUBLISH_CF_URL ?? "";
-  const apiKey =
-    values.get("api-key") ??
-    process.env.TRENDPUBLISH_API_KEY ??
-    process.env.SERVER_API_KEY ??
-    (await readApiKeyFromConfig(configPath));
+  const apiKey = values.get("api-key") ?? initializeAppConfig().server.apiKey;
   if (!url) throw new Error("缺少 Cloudflare Worker URL。使用 --url 或 TRENDPUBLISH_CF_URL。");
-  if (!apiKey) throw new Error("缺少 API Key。使用 --api-key 或 SERVER_API_KEY。");
+  if (!apiKey) throw new Error("缺少 API Key。使用 --api-key 或 TRENDPUBLISH_API_KEY。");
   return {
     url,
     apiKey,
@@ -122,14 +117,6 @@ async function parseSmokeArgs(args: string[], configPath?: string): Promise<Smok
     planId: values.get("plan-id"),
     requestedTopic: values.get("topic"),
   };
-}
-
-async function readApiKeyFromConfig(configPath?: string): Promise<string> {
-  try {
-    return (await initializeAppConfig({ configPath })).server.apiKey;
-  } catch {
-    return "";
-  }
 }
 
 function delay(ms: number): Promise<void> {

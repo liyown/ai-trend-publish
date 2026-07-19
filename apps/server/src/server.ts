@@ -145,13 +145,11 @@ function resolveRepoRootDistDashboard(): string {
 
 export function buildLocalDeps(): HttpDeps {
   const config = getAppConfig();
-  const runtime = config.then((value) =>
-    createLocalApplicationRuntime(path.resolve(value.database.sqlitePath)),
-  );
+  const runtime = createLocalApplicationRuntime(path.resolve(config.database.sqlitePath));
   return {
     mode: "local",
     async getApiKey() {
-      return (await config).server.apiKey;
+      return config.server.apiKey;
     },
     async getRuntime() {
       return runtime;
@@ -161,7 +159,7 @@ export function buildLocalDeps(): HttpDeps {
 }
 
 export default async function startServer(port = 8000): Promise<void> {
-  const config = await getAppConfig();
+  const config = getAppConfig();
   if (!config.server.apiKey.trim()) {
     throw new Error("server.apiKey 未配置，拒绝启动未受保护的服务");
   }

@@ -1,11 +1,10 @@
 import { access } from "node:fs/promises";
 import { resolve } from "node:path";
-import { initializeAppConfig, parseConfigArgs } from "@trendpublish/core/config";
+import { initializeAppConfig } from "@trendpublish/core/config";
 import { SQLiteStateStore } from "@trendpublish/server/local-state";
 
 export async function main(): Promise<void> {
-  const { configPath } = parseConfigArgs(process.argv.slice(2));
-  const config = await initializeAppConfig({ configPath });
+  const config = initializeAppConfig();
   const checks: Array<{ name: string; ok: boolean; detail: string }> = [];
   checks.push({
     name: "server.apiKey",

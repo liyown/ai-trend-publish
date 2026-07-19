@@ -5,14 +5,13 @@ import {
   type WeixinClient,
   type WeixinDraftInput,
 } from "@trendpublish/connectors";
-import { initializeAppConfig, parseConfigArgs } from "@trendpublish/core/config";
+import { initializeAppConfig } from "@trendpublish/core/config";
 import { Logger } from "@trendpublish/core/logging";
 import { serveFetch } from "@trendpublish/core/node";
 import { redactSensitiveText } from "@trendpublish/core/utilities";
 
 const logger = new Logger("weixin-relay");
-const { configPath } = parseConfigArgs(process.argv.slice(2));
-const config = await initializeAppConfig({ configPath });
+const config = initializeAppConfig();
 if (!config.server.apiKey.trim()) throw new Error("weixin-relay 需要 server.apiKey");
 const port = Number(process.env.PORT ?? config.server.port ?? 8080);
 

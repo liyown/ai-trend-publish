@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 
-import { initializeAppConfig, parseConfigArgs } from "@trendpublish/core/config";
+import { initializeAppConfig } from "@trendpublish/core/config";
 import type { ResolvedTrendPublishConfig } from "@trendpublish/core/config";
 import { stringifyUnknown } from "@trendpublish/core/utilities";
 
@@ -11,9 +11,8 @@ interface SyncArgs {
 }
 
 export async function main(argv = process.argv.slice(2)): Promise<void> {
-  const { configPath, args } = parseConfigArgs(argv);
-  const options = parseSyncArgs(args);
-  const config = await initializeAppConfig({ configPath });
+  const options = parseSyncArgs(argv);
+  const config = initializeAppConfig();
   await syncSecrets(config, options);
 }
 

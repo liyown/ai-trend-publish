@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
 import { ChannelId } from "@trendpublish/contracts";
 import { Plus } from "lucide-react";
 import type {
@@ -8,8 +7,7 @@ import type {
   SaveChannelAccountPayload,
   SavePublishTargetPayload,
 } from "#platform/api/types.ts";
-import { useDashboardApi } from "../../app/providers.tsx";
-import { useWorkspaceRefresh, useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
+import { useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
 import { Button } from "#components/ui/button.tsx";
 import { Input } from "#components/ui/input.tsx";
 import { NativeSelect } from "#components/ui/select.tsx";
@@ -19,43 +17,27 @@ import { Badge } from "#components/ui/badge.tsx";
 import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
 import { FormError } from "#components/product/form-error.tsx";
 import { PageGrid } from "#components/product/page-grid.tsx";
+import {
+  useChannelAccounts,
+  useDeleteChannelAccount,
+  useDeletePublishTarget,
+  usePublishTargets,
+  useSaveChannelAccount,
+  useSavePublishTarget,
+} from "./use-publishing.ts";
 
 export function PublishingPage() {
   const { data: workspace } = useWorkspaceSnapshot({ live: false });
-  const api = useDashboardApi();
-  const refresh = useWorkspaceRefresh();
+  const { data: channelAccounts } = useChannelAccounts();
+  const { data: publishTargets } = usePublishTargets();
   const [accountEditor, setAccountEditor] = useState<ChannelAccount | "new" | null>(null);
   const [targetEditor, setTargetEditor] = useState<PublishTarget | "new" | null>(null);
-  const saveAccount = useMutation({
-    mutationFn: (body: SaveChannelAccountPayload) =>
-      accountEditor === "new"
-        ? api.createChannelAccount(body)
-        : api.updateChannelAccount(accountEditor!.id, body),
-    onSuccess: () => {
-      setAccountEditor(null);
-      refresh();
-    },
-  });
-  const saveTarget = useMutation({
-    mutationFn: (body: SavePublishTargetPayload) =>
-      targetEditor === "new"
-        ? api.createPublishTarget(body)
-        : api.updatePublishTarget(targetEditor!.id, body),
-    onSuccess: () => {
-      setTargetEditor(null);
-      refresh();
-    },
-  });
-  const deleteAccount = useMutation({
-    mutationFn: (id: string) => api.deleteChannelAccount(id),
-    onSuccess: refresh,
-  });
-  const deleteTarget = useMutation({
-    mutationFn: (id: string) => api.deletePublishTarget(id),
-    onSuccess: refresh,
-  });
-  const accounts = workspace?.channelAccounts ?? [];
-  const targets = workspace?.publishTargets ?? [];
+  const saveAccount = useSaveChannelAccount();
+  const saveTarget = useSavePublishTarget();
+  const deleteAccount = useDeleteChannelAccount();
+  const deleteTarget = useDeletePublishTarget();
+  const accounts = channelAccounts?.channelAccounts ?? [];
+  const targets = publishTargets?.publishTargets ?? [];
   return (
     <PageGrid>
       <EntityList
@@ -117,7 +99,12 @@ export function PublishingPage() {
         value={accountEditor}
         open={Boolean(accountEditor)}
         onOpenChange={(open) => !open && setAccountEditor(null)}
-        onSave={(body) => saveAccount.mutate(body)}
+        onSave={(body) =>
+          saveAccount.mutate(
+            { id: accountEditor === "new" ? undefined : accountEditor!.id, body },
+            { onSuccess: () => setAccountEditor(null) },
+          )
+        }
         saving={saveAccount.isPending}
         error={saveAccount.error}
       />
@@ -125,7 +112,12 @@ export function PublishingPage() {
         value={targetEditor}
         open={Boolean(targetEditor)}
         onOpenChange={(open) => !open && setTargetEditor(null)}
-        onSave={(body) => saveTarget.mutate(body)}
+        onSave={(body) =>
+          saveTarget.mutate(
+            { id: targetEditor === "new" ? undefined : targetEditor!.id, body },
+            { onSuccess: () => setTargetEditor(null) },
+          )
+        }
         saving={saveTarget.isPending}
         error={saveTarget.error}
       />
@@ -250,7 +242,8 @@ function TargetDialog({
   saving: boolean;
   error: unknown;
 }) {
-  const { data: workspace } = useWorkspaceSnapshot({ live: false });
+  const { data: channelAccounts } = useChannelAccounts();
+  const accounts = channelAccounts?.channelAccounts ?? [];
   const [form, setForm] = useState<SavePublishTargetPayload>({
     name: "",
     channelAccountId: "",
@@ -262,12 +255,12 @@ function TargetDialog({
       value === "new"
         ? {
             name: "",
-            channelAccountId: workspace?.channelAccounts[0]?.id ?? "",
+            channelAccountId: accounts[0]?.id ?? "",
             settings: {},
           }
         : { ...value, revision: value.revision },
     );
-  }, [value, workspace]);
+  }, [value, accounts]);
   return (
     <AppDialog
       open={open}
@@ -285,7 +278,7 @@ function TargetDialog({
             value={form.channelAccountId}
             onChange={(e) => setForm({ ...form, channelAccountId: e.target.value })}
           >
-            {workspace?.channelAccounts.map((item) => (
+            {accounts.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.name}
               </option>

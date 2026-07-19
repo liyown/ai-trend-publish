@@ -1,13 +1,6 @@
 import { useEffect, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
-import type {
-  SaveSourceCollectionPayload,
-  SourceCollection,
-  SourceItem,
-} from "#platform/api/types.ts";
-import { useDashboardApi } from "../../app/providers.tsx";
-import { useWorkspaceRefresh, useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
+import type { SourceCollection, SourceItem } from "#platform/api/types.ts";
 import { Button, IconButton } from "#components/ui/button.tsx";
 import { Input } from "#components/ui/input.tsx";
 import { NativeSelect } from "#components/ui/select.tsx";
@@ -16,6 +9,11 @@ import { FormField } from "#components/product/form-field.tsx";
 import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
 import { FormError } from "#components/product/form-error.tsx";
 import { PageGrid } from "#components/product/page-grid.tsx";
+import {
+  useSourceCollections,
+  useDeleteSourceCollection,
+  useSaveSourceCollection,
+} from "./use-source-collections.ts";
 
 const newItem = (kind: SourceItem["kind"] = "url"): SourceItem =>
   kind === "url"
@@ -23,15 +21,10 @@ const newItem = (kind: SourceItem["kind"] = "url"): SourceItem =>
     : { id: `local-${crypto.randomUUID()}`, kind, enabled: true, query: "" };
 
 export function SourcesPage() {
-  const { data: workspace } = useWorkspaceSnapshot({ live: false });
-  const api = useDashboardApi();
-  const refresh = useWorkspaceRefresh();
+  const { data } = useSourceCollections();
   const [editing, setEditing] = useState<SourceCollection | "new" | null>(null);
-  const remove = useMutation({
-    mutationFn: (id: string) => api.deleteSourceCollection(id),
-    onSuccess: refresh,
-  });
-  const collections = workspace?.sourceCollections ?? [];
+  const remove = useDeleteSourceCollection();
+  const collections = data?.sourceCollections ?? [];
 
   return (
     <PageGrid>
@@ -77,8 +70,6 @@ function SourceDialog({
   open: boolean;
   onOpenChange(open: boolean): void;
 }) {
-  const api = useDashboardApi();
-  const refresh = useWorkspaceRefresh();
   const [name, setName] = useState("");
   const [revision, setRevision] = useState<number>();
   const [items, setItems] = useState<SourceItem[]>([]);
@@ -88,16 +79,7 @@ function SourceDialog({
     setRevision(source === "new" ? undefined : source.revision);
     setItems(source === "new" ? [newItem()] : structuredClone(source.sources));
   }, [source]);
-  const save = useMutation({
-    mutationFn: (body: SaveSourceCollectionPayload) =>
-      source === "new"
-        ? api.createSourceCollection(body)
-        : api.updateSourceCollection(source!.id, body),
-    onSuccess: () => {
-      refresh();
-      onOpenChange(false);
-    },
-  });
+  const save = useSaveSourceCollection();
   const setItemKind = (id: string, kind: SourceItem["kind"]) =>
     setItems((current) =>
       current.map((item) => {
@@ -201,21 +183,27 @@ function SourceDialog({
           loading={save.isPending}
           disabled={!valid}
           onClick={() =>
-            save.mutate({
-              name: name.trim(),
-              enabled: true,
-              revision,
-              sources: items.map((item) => {
-                const common = {
-                  id: item.id.startsWith("local-") ? undefined : item.id,
-                  title: item.title?.trim() || undefined,
+            save.mutate(
+              {
+                id: source !== "new" ? source?.id : undefined,
+                body: {
+                  name: name.trim(),
                   enabled: true,
-                };
-                return item.kind === "url"
-                  ? { ...common, kind: item.kind, url: item.url.trim() }
-                  : { ...common, kind: item.kind, query: item.query.trim() };
-              }),
-            })
+                  revision,
+                  sources: items.map((item) => {
+                    const common = {
+                      id: item.id.startsWith("local-") ? undefined : item.id,
+                      title: item.title?.trim() || undefined,
+                      enabled: true,
+                    };
+                    return item.kind === "url"
+                      ? { ...common, kind: item.kind, url: item.url.trim() }
+                      : { ...common, kind: item.kind, query: item.query.trim() };
+                  }),
+                },
+              },
+              { onSuccess: () => onOpenChange(false) },
+            )
           }
         >
           保存来源

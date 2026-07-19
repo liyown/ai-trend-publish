@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
 import { Play, Plus } from "lucide-react";
 import type { Automation, SaveAutomationPayload } from "#platform/api/types.ts";
-import { useDashboardApi } from "../../app/providers.tsx";
-import { useWorkspaceRefresh, useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
+import { useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
 import { Button } from "#components/ui/button.tsx";
 import { Input } from "#components/ui/input.tsx";
 import { Textarea } from "#components/ui/textarea.tsx";
@@ -15,6 +13,12 @@ import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
 import { FormError } from "#components/product/form-error.tsx";
 import { PageGrid } from "#components/product/page-grid.tsx";
 import { splitLines } from "#lib/utils.ts";
+import {
+  useAutomations,
+  useDeleteAutomation,
+  useSaveAutomation,
+  useStartAutomationRun,
+} from "./use-automations.ts";
 
 const emptyAutomation = (): SaveAutomationPayload => ({
   name: "",
@@ -26,27 +30,16 @@ const emptyAutomation = (): SaveAutomationPayload => ({
 });
 
 export function AutomationsPage() {
-  const { data: workspace, error: workspaceError } = useWorkspaceSnapshot({ live: false });
-  const api = useDashboardApi();
-  const refresh = useWorkspaceRefresh();
+  const { data, error } = useAutomations();
+  const { data: workspace } = useWorkspaceSnapshot({ live: false });
   const [editing, setEditing] = useState<Automation | "new" | null>(null);
   const [running, setRunning] = useState<Automation | null>(null);
-  const save = useMutation({
-    mutationFn: (body: SaveAutomationPayload) =>
-      editing === "new" ? api.createAutomation(body) : api.updateAutomation(editing!.id, body),
-    onSuccess: () => {
-      setEditing(null);
-      refresh();
-    },
-  });
-  const remove = useMutation({
-    mutationFn: (id: string) => api.deleteAutomation(id),
-    onSuccess: refresh,
-  });
-  const automations = workspace?.automations ?? [];
+  const save = useSaveAutomation();
+  const remove = useDeleteAutomation();
+  const automations = data?.automations ?? [];
   const hasEnabledPlan = workspace?.contentPlans.some((item) => item.enabled) ?? false;
 
-  if (workspaceError && !workspace) return null;
+  if (error && !data) return null;
 
   return (
     <PageGrid>
@@ -104,7 +97,12 @@ export function AutomationsPage() {
         value={editing}
         open={Boolean(editing)}
         onOpenChange={(open) => !open && setEditing(null)}
-        onSave={(body) => save.mutate(body)}
+        onSave={(body) =>
+          save.mutate(
+            { id: editing === "new" ? undefined : (editing as Automation).id, body },
+            { onSuccess: () => setEditing(null) },
+          )
+        }
         saving={save.isPending}
         error={save.error}
       />
@@ -354,20 +352,9 @@ function RunDialog({
   automation: Automation | null;
   onOpenChange(open: boolean): void;
 }) {
-  const api = useDashboardApi();
-  const refresh = useWorkspaceRefresh();
   const [topic, setTopic] = useState("");
   useEffect(() => setTopic(""), [automation]);
-  const run = useMutation({
-    mutationFn: () =>
-      api.startAutomationRun(automation!.id, {
-        requestedTopic: topic.trim() || undefined,
-      }),
-    onSuccess: () => {
-      refresh();
-      onOpenChange(false);
-    },
-  });
+  const run = useStartAutomationRun();
   return (
     <AppDialog
       open={Boolean(automation)}
@@ -386,7 +373,16 @@ function RunDialog({
       </div>
       <AppDialogFooter className="flex justify-end gap-2">
         <Button onClick={() => onOpenChange(false)}>取消</Button>
-        <Button variant="primary" loading={run.isPending} onClick={() => run.mutate()}>
+        <Button
+          variant="primary"
+          loading={run.isPending}
+          onClick={() =>
+            run.mutate(
+              { id: automation!.id, body: { requestedTopic: topic.trim() || undefined } },
+              { onSuccess: () => onOpenChange(false) },
+            )
+          }
+        >
           <Play className="size-4" />
           开始运行
         </Button>

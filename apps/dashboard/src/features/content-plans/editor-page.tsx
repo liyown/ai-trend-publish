@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { Bug, ScrollText, Settings2 } from "lucide-react";
 import type { SaveContentPlanPayload } from "#platform/api/types.ts";
-import { useDashboardApi } from "../../app/providers.tsx";
-import { useWorkspaceRefresh, useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
+import { useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
+import { useSaveContentPlan } from "./use-content-plans.ts";
 import { Button } from "#components/ui/button.tsx";
 import { Tabs } from "#components/ui/tabs.tsx";
 import { capabilityConnections, ConfigView, type SectionId } from "./editor/config-view.tsx";
@@ -31,8 +30,7 @@ export function ContentPlanEditorPage() {
   const params = useParams({ strict: false }) as { planId?: string };
   const planId = params.planId;
   const { data: workspace } = useWorkspaceSnapshot({ live: false });
-  const api = useDashboardApi();
-  const refresh = useWorkspaceRefresh();
+  const save = useSaveContentPlan(planId);
   const navigate = useNavigate();
   const [view, setView] = useState<EditorView>("config");
   const [section, setSection] = useState<SectionId>("basic");
@@ -84,14 +82,6 @@ export function ContentPlanEditorPage() {
     setDirty(true);
     setValidationError(null);
   };
-  const save = useMutation({
-    mutationFn: () => (planId ? api.updateContentPlan(planId, form) : api.createContentPlan(form)),
-    onSuccess: () => {
-      refresh();
-      setDirty(false);
-      void navigate({ to: "/content-plans" });
-    },
-  });
   const cancel = () => {
     if (!dirty || confirm("放弃尚未保存的修改？")) void navigate({ to: "/content-plans" });
   };
@@ -123,7 +113,12 @@ export function ContentPlanEditorPage() {
       return;
     }
     setValidationError(null);
-    save.mutate();
+    save.mutate(form, {
+      onSuccess: () => {
+        setDirty(false);
+        void navigate({ to: "/content-plans" });
+      },
+    });
   };
 
   if (planId && workspace && !plan)

@@ -7,7 +7,7 @@ import type {
   StoredContentPackage,
   StoredReviewRequest,
 } from "#platform/api/types.ts";
-import { useDashboardApi } from "../../app/providers.tsx";
+import { submitEditedArticle, startPublication } from "#platform/api/articles.ts";
 import { useWorkspaceRefresh, useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
 import { Button } from "#components/ui/button.tsx";
 import { Input } from "#components/ui/input.tsx";
@@ -91,7 +91,6 @@ function ReviewDialog({
   value: StoredReviewRequest | null;
   onOpenChange(open: boolean): void;
 }) {
-  const api = useDashboardApi();
   const refresh = useWorkspaceRefresh();
   const [source, setSource] = useState<ArticleSource | null>(null);
   const [assetRequests, setAssetRequests] = useState<AssetRequest[]>([]);
@@ -105,7 +104,7 @@ function ReviewDialog({
   const complete = useMutation({
     mutationFn: () => {
       if (!value || !source) throw new Error("待审内容尚未载入");
-      return api.submitEditedArticle({
+      return submitEditedArticle({
         planId: value.planId,
         reviewRequestId: value.id,
         source: {
@@ -406,7 +405,6 @@ function PublishDialog({
   onOpenChange(open: boolean): void;
 }) {
   const { data: workspace } = useWorkspaceSnapshot({ live: false });
-  const api = useDashboardApi();
   const refresh = useWorkspaceRefresh();
   const candidates = useMemo(
     () => (value ? (workspace?.publishTargets ?? []) : []),
@@ -414,7 +412,7 @@ function PublishDialog({
   );
   const [selected, setSelected] = useState<string[]>([]);
   const publish = useMutation({
-    mutationFn: () => api.startPublication({ packageId: value!.id, targetIds: selected }),
+    mutationFn: () => startPublication({ packageId: value!.id, targetIds: selected }),
     onSuccess: () => {
       onOpenChange(false);
       refresh();

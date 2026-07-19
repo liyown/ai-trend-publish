@@ -1,9 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { useMutation } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import type { ContentIdentity, SaveIdentityPayload } from "#platform/api/types.ts";
-import { useDashboardApi } from "../../app/providers.tsx";
-import { useWorkspaceRefresh, useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
+import { useIdentities, useDeleteIdentity, useSaveIdentity } from "./use-identities.ts";
 import { Button } from "#components/ui/button.tsx";
 import { Input } from "#components/ui/input.tsx";
 import { Textarea } from "#components/ui/textarea.tsx";
@@ -24,23 +22,11 @@ const blank: SaveIdentityPayload = {
 };
 
 export function IdentitiesPage() {
-  const { data: workspace } = useWorkspaceSnapshot({ live: false });
-  const api = useDashboardApi();
-  const refresh = useWorkspaceRefresh();
+  const { data } = useIdentities();
   const [editing, setEditing] = useState<ContentIdentity | "new" | null>(null);
-  const save = useMutation({
-    mutationFn: (payload: SaveIdentityPayload) =>
-      editing === "new" ? api.createIdentity(payload) : api.updateIdentity(editing!.id, payload),
-    onSuccess: () => {
-      setEditing(null);
-      refresh();
-    },
-  });
-  const remove = useMutation({
-    mutationFn: (id: string) => api.deleteIdentity(id),
-    onSuccess: refresh,
-  });
-  const identities = workspace?.identities ?? [];
+  const save = useSaveIdentity();
+  const remove = useDeleteIdentity();
+  const identities = data?.identities ?? [];
   return (
     <PageGrid>
       <EntityList
@@ -69,7 +55,12 @@ export function IdentitiesPage() {
         identity={editing}
         open={Boolean(editing)}
         onOpenChange={(open) => !open && setEditing(null)}
-        onSave={(payload) => save.mutate(payload)}
+        onSave={(payload) =>
+          save.mutate(
+            { id: editing === "new" ? undefined : editing!.id, body: payload },
+            { onSuccess: () => setEditing(null) },
+          )
+        }
         saving={save.isPending}
         error={save.error}
       />

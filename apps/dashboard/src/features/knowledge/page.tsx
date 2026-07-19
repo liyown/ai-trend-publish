@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
 import { FileText, Plus, Upload } from "lucide-react";
 import type { KnowledgeBase, SaveKnowledgeBasePayload } from "#platform/api/types.ts";
-import { useDashboardApi } from "../../app/providers.tsx";
-import { useWorkspaceRefresh, useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
+import {
+  useKnowledgeBases,
+  useDeleteKnowledgeBase,
+  useSaveKnowledgeBase,
+} from "./use-knowledge-bases.ts";
 import { Button } from "#components/ui/button.tsx";
 import { Input } from "#components/ui/input.tsx";
 import { AppDialog, AppDialogFooter } from "#components/product/app-dialog.tsx";
@@ -15,25 +17,11 @@ import { PageGrid } from "#components/product/page-grid.tsx";
 const blank: SaveKnowledgeBasePayload = { name: "", enabled: true, documents: [] };
 
 export function KnowledgePage() {
-  const { data: workspace } = useWorkspaceSnapshot({ live: false });
-  const api = useDashboardApi();
-  const refresh = useWorkspaceRefresh();
+  const { data } = useKnowledgeBases();
+  const save = useSaveKnowledgeBase();
+  const remove = useDeleteKnowledgeBase();
   const [editing, setEditing] = useState<KnowledgeBase | "new" | null>(null);
-  const save = useMutation({
-    mutationFn: (body: SaveKnowledgeBasePayload) =>
-      editing === "new"
-        ? api.createKnowledgeBase(body)
-        : api.updateKnowledgeBase(editing!.id, body),
-    onSuccess: () => {
-      setEditing(null);
-      refresh();
-    },
-  });
-  const remove = useMutation({
-    mutationFn: (id: string) => api.deleteKnowledgeBase(id),
-    onSuccess: refresh,
-  });
-  const items = workspace?.knowledgeBases ?? [];
+  const items = data?.knowledgeBases ?? [];
   return (
     <PageGrid>
       <EntityList
@@ -62,7 +50,12 @@ export function KnowledgePage() {
         value={editing}
         open={Boolean(editing)}
         onOpenChange={(open) => !open && setEditing(null)}
-        onSave={(body) => save.mutate(body)}
+        onSave={(body) =>
+          save.mutate(
+            { id: editing !== "new" ? editing!.id : undefined, body },
+            { onSuccess: () => setEditing(null) },
+          )
+        }
         saving={save.isPending}
         error={save.error}
       />

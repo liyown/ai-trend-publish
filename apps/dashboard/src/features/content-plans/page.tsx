@@ -1,22 +1,17 @@
-import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
-import { useDashboardApi } from "../../app/providers.tsx";
-import { useWorkspaceRefresh, useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
+import { useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
+import { useContentPlans, useDeleteContentPlan } from "./use-content-plans.ts";
 import { Button } from "#components/ui/button.tsx";
 import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
 import { PageGrid } from "#components/product/page-grid.tsx";
 
 export function ContentPlansPage() {
   const { data: workspace } = useWorkspaceSnapshot({ live: false });
-  const api = useDashboardApi();
-  const refresh = useWorkspaceRefresh();
+  const { data } = useContentPlans();
+  const remove = useDeleteContentPlan();
   const navigate = useNavigate();
-  const remove = useMutation({
-    mutationFn: (id: string) => api.deleteContentPlan(id),
-    onSuccess: refresh,
-  });
-  const plans = workspace?.contentPlans ?? [];
+  const plans = data?.contentPlans ?? [];
   return (
     <PageGrid>
       <EntityList

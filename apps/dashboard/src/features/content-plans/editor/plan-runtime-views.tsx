@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Bug } from "lucide-react";
 import type { JobRecord } from "#platform/api/types.ts";
+import { startArticleGeneration } from "#platform/api/articles.ts";
 import { useJobMonitor } from "#platform/api/use-job-monitor.ts";
 import { useWorkspaceRefresh } from "#platform/api/use-workspace-snapshot.ts";
 import { Button } from "#components/ui/button.tsx";
@@ -10,24 +11,22 @@ import { Textarea } from "#components/ui/textarea.tsx";
 import { EmptyState } from "#components/product/empty-state.tsx";
 import { FormField } from "#components/product/form-field.tsx";
 import { cn } from "#lib/utils.ts";
-import { useDashboardApi } from "../../../app/providers.tsx";
 import { FormError } from "#components/product/form-error.tsx";
 import { jobStatusTone, jobTypeLabel } from "../../jobs/job-presentation.ts";
 import { PipelineRunDetail } from "./pipeline-run-detail.tsx";
 
 export function ContentPlanDebugView({ planId, dirty }: { planId?: string; dirty: boolean }) {
-  const api = useDashboardApi();
   const refresh = useWorkspaceRefresh();
   const [topic, setTopic] = useState("");
   const [jobId, setJobId] = useState<string | null>(null);
   const run = useMutation({
     mutationFn: () =>
-      api.startArticleGeneration({
+      startArticleGeneration({
         planId: planId!,
         requestedTopic: topic.trim() || undefined,
       }),
-    onSuccess: ({ job }) => {
-      setJobId(job.id);
+    onSuccess: (data: { job: { id: string } }) => {
+      setJobId(data.job.id);
       refresh();
     },
   });

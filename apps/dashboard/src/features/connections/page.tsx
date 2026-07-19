@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
 import { FlaskConical, Plus } from "lucide-react";
 import type {
   Connection,
@@ -7,8 +6,7 @@ import type {
   JsonValue,
   SaveConnectionPayload,
 } from "#platform/api/types.ts";
-import { useDashboardApi } from "../../app/providers.tsx";
-import { useWorkspaceRefresh, useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
+import { useWorkspaceRefresh } from "#platform/api/use-workspace-snapshot.ts";
 import { Button } from "#components/ui/button.tsx";
 import { Input } from "#components/ui/input.tsx";
 import { NativeSelect } from "#components/ui/select.tsx";
@@ -20,21 +18,22 @@ import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
 import { FormError, describeError } from "#components/product/form-error.tsx";
 import { PageGrid } from "#components/product/page-grid.tsx";
 import { suggestConnectionName } from "./connection-naming.ts";
+import {
+  useConnections,
+  useDeleteConnection,
+  useSaveConnection,
+  useTestConnection,
+} from "./use-connections.ts";
 
 type Editor = { definition: ConnectorDefinition; connection?: Connection; suggestedName?: string };
 
 export function ConnectionsPage() {
-  const { data: workspace } = useWorkspaceSnapshot({ live: false });
-  const api = useDashboardApi();
-  const refresh = useWorkspaceRefresh();
+  const { data } = useConnections();
   const [editor, setEditor] = useState<Editor | null>(null);
   const [choose, setChoose] = useState(false);
-  const remove = useMutation({
-    mutationFn: (id: string) => api.deleteConnection(id),
-    onSuccess: refresh,
-  });
-  const definitions = workspace?.connectorDefinitions ?? [];
-  const connections = workspace?.connections ?? [];
+  const remove = useDeleteConnection();
+  const definitions = data?.definitions ?? [];
+  const connections = data?.connections ?? [];
   const byId = useMemo(() => new Map(definitions.map((item) => [item.id, item])), [definitions]);
   return (
     <PageGrid>
@@ -122,8 +121,6 @@ function ConnectionDialog({
   editor: Editor | null;
   onOpenChange(open: boolean): void;
 }) {
-  const api = useDashboardApi();
-  const refresh = useWorkspaceRefresh();
   const [name, setName] = useState("");
   const [enabled, setEnabled] = useState(true);
   const [values, setValues] = useState<Record<string, JsonValue>>({});
@@ -174,22 +171,8 @@ function ConnectionDialog({
         }
       : undefined,
   });
-  const save = useMutation({
-    mutationFn: () =>
-      editor?.connection
-        ? api.updateConnection(editor.connection.id, payload())
-        : api.createConnection(payload()),
-    onSuccess: () => {
-      refresh();
-      onOpenChange(false);
-    },
-  });
-  const test = useMutation({
-    mutationFn: () => api.testConnection(payload()),
-    onSuccess: (data: {
-      test: { success: boolean; message: string; latencyMs: number; checkedAt: string };
-    }) => setResult(data.test),
-  });
+  const save = useSaveConnection();
+  const test = useTestConnection();
   if (!editor) return null;
   const fields = [...editor.definition.fields].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const primaryFields = fields.filter((field) => field.defaultValue === undefined);
@@ -313,7 +296,7 @@ function ConnectionDialog({
           disabled={missingRequiredField}
           onClick={() => {
             try {
-              test.mutate();
+              test.mutate(payload());
             } catch (error) {
               setResult({ success: false, message: describeError(error), latencyMs: 0 });
             }
@@ -328,7 +311,12 @@ function ConnectionDialog({
             variant="primary"
             loading={save.isPending}
             disabled={!name.trim() || missingRequiredField}
-            onClick={() => save.mutate()}
+            onClick={() =>
+              save.mutate(
+                { id: editor.connection?.id, body: payload() },
+                { onSuccess: () => onOpenChange(false) },
+              )
+            }
           >
             保存连接
           </Button>

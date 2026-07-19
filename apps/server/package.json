@@ -1,0 +1,30 @@
+{
+  "name": "@trendpublish/server",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./local-state": "./src/platform/local/sqlite-state-store.ts",
+    "./server": "./src/server.ts"
+  },
+  "scripts": {
+    "check": "vp check",
+    "dev": "vp exec tsx src/index.ts",
+    "start": "vp exec tsx src/index.ts",
+    "relay": "vp exec tsx src/apps/weixin-relay/server.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.0.4",
+    "@hono/zod-validator": "^0.8.0",
+    "@trendpublish/article": "workspace:*",
+    "@trendpublish/connectors": "workspace:*",
+    "@trendpublish/contracts": "workspace:*",
+    "@trendpublish/core": "workspace:*",
+    "@trendpublish/publishing": "workspace:*",
+    "@trendpublish/runtime": "workspace:*",
+    "hono": "^4.12.25",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2"
+  }
+}

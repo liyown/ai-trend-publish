@@ -11,19 +11,19 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
-import { Route as AppAutomationsRouteImport } from './routes/_app.automations'
-import { Route as AppConnectionsRouteImport } from './routes/_app.connections'
-import { Route as AppContentPlansRouteImport } from './routes/_app.content-plans'
-import { Route as AppIdentitiesRouteImport } from './routes/_app.identities'
-import { Route as AppJobsRouteImport } from './routes/_app.jobs'
-import { Route as AppKnowledgeRouteImport } from './routes/_app.knowledge'
-import { Route as AppLibraryRouteImport } from './routes/_app.library'
-import { Route as AppPublishingRouteImport } from './routes/_app.publishing'
-import { Route as AppSettingsRouteImport } from './routes/_app.settings'
-import { Route as AppSourcesRouteImport } from './routes/_app.sources'
-import { Route as AppWorkspaceRouteImport } from './routes/_app.workspace'
-import { Route as AppContentPlansNewRouteImport } from './routes/_app.content-plans.new'
-import { Route as AppContentPlansPlanIdEditRouteImport } from './routes/_app.content-plans.$planId.edit'
+import { Route as AppAutomationsRouteImport } from './routes/_app/automations'
+import { Route as AppConnectionsRouteImport } from './routes/_app/connections'
+import { Route as AppContentPlansRouteImport } from './routes/_app/content-plans'
+import { Route as AppIdentitiesRouteImport } from './routes/_app/identities'
+import { Route as AppJobsRouteImport } from './routes/_app/jobs'
+import { Route as AppKnowledgeRouteImport } from './routes/_app/knowledge'
+import { Route as AppLibraryRouteImport } from './routes/_app/library'
+import { Route as AppPublishingRouteImport } from './routes/_app/publishing'
+import { Route as AppSettingsRouteImport } from './routes/_app/settings'
+import { Route as AppSourcesRouteImport } from './routes/_app/sources'
+import { Route as AppWorkspaceRouteImport } from './routes/_app/workspace'
+import { Route as AppContentPlansNewRouteImport } from './routes/_app/content-plans_.new'
+import { Route as AppContentPlansPlanIdEditRouteImport } from './routes/_app/content-plans_.$planId.edit'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -90,22 +90,22 @@ const AppWorkspaceRoute = AppWorkspaceRouteImport.update({
   getParentRoute: () => AppRoute,
 } as any)
 const AppContentPlansNewRoute = AppContentPlansNewRouteImport.update({
-  id: '/new',
-  path: '/new',
-  getParentRoute: () => AppContentPlansRoute,
+  id: '/content-plans_/new',
+  path: '/content-plans/new',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppContentPlansPlanIdEditRoute =
   AppContentPlansPlanIdEditRouteImport.update({
-    id: '/$planId/edit',
-    path: '/$planId/edit',
-    getParentRoute: () => AppContentPlansRoute,
+    id: '/content-plans_/$planId/edit',
+    path: '/content-plans/$planId/edit',
+    getParentRoute: () => AppRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/automations': typeof AppAutomationsRoute
   '/connections': typeof AppConnectionsRoute
-  '/content-plans': typeof AppContentPlansRouteWithChildren
+  '/content-plans': typeof AppContentPlansRoute
   '/identities': typeof AppIdentitiesRoute
   '/jobs': typeof AppJobsRoute
   '/knowledge': typeof AppKnowledgeRoute
@@ -121,7 +121,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/automations': typeof AppAutomationsRoute
   '/connections': typeof AppConnectionsRoute
-  '/content-plans': typeof AppContentPlansRouteWithChildren
+  '/content-plans': typeof AppContentPlansRoute
   '/identities': typeof AppIdentitiesRoute
   '/jobs': typeof AppJobsRoute
   '/knowledge': typeof AppKnowledgeRoute
@@ -139,7 +139,7 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/_app/automations': typeof AppAutomationsRoute
   '/_app/connections': typeof AppConnectionsRoute
-  '/_app/content-plans': typeof AppContentPlansRouteWithChildren
+  '/_app/content-plans': typeof AppContentPlansRoute
   '/_app/identities': typeof AppIdentitiesRoute
   '/_app/jobs': typeof AppJobsRoute
   '/_app/knowledge': typeof AppKnowledgeRoute
@@ -148,8 +148,8 @@ export interface FileRoutesById {
   '/_app/settings': typeof AppSettingsRoute
   '/_app/sources': typeof AppSourcesRoute
   '/_app/workspace': typeof AppWorkspaceRoute
-  '/_app/content-plans/new': typeof AppContentPlansNewRoute
-  '/_app/content-plans/$planId/edit': typeof AppContentPlansPlanIdEditRoute
+  '/_app/content-plans_/new': typeof AppContentPlansNewRoute
+  '/_app/content-plans_/$planId/edit': typeof AppContentPlansPlanIdEditRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -199,8 +199,8 @@ export interface FileRouteTypes {
     | '/_app/settings'
     | '/_app/sources'
     | '/_app/workspace'
-    | '/_app/content-plans/new'
-    | '/_app/content-plans/$planId/edit'
+    | '/_app/content-plans_/new'
+    | '/_app/content-plans_/$planId/edit'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -301,41 +301,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkspaceRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/content-plans/new': {
-      id: '/_app/content-plans/new'
-      path: '/new'
+    '/_app/content-plans_/new': {
+      id: '/_app/content-plans_/new'
+      path: '/content-plans/new'
       fullPath: '/content-plans/new'
       preLoaderRoute: typeof AppContentPlansNewRouteImport
-      parentRoute: typeof AppContentPlansRoute
+      parentRoute: typeof AppRoute
     }
-    '/_app/content-plans/$planId/edit': {
-      id: '/_app/content-plans/$planId/edit'
-      path: '/$planId/edit'
+    '/_app/content-plans_/$planId/edit': {
+      id: '/_app/content-plans_/$planId/edit'
+      path: '/content-plans/$planId/edit'
       fullPath: '/content-plans/$planId/edit'
       preLoaderRoute: typeof AppContentPlansPlanIdEditRouteImport
-      parentRoute: typeof AppContentPlansRoute
+      parentRoute: typeof AppRoute
     }
   }
 }
 
-interface AppContentPlansRouteChildren {
-  AppContentPlansNewRoute: typeof AppContentPlansNewRoute
-  AppContentPlansPlanIdEditRoute: typeof AppContentPlansPlanIdEditRoute
-}
-
-const AppContentPlansRouteChildren: AppContentPlansRouteChildren = {
-  AppContentPlansNewRoute: AppContentPlansNewRoute,
-  AppContentPlansPlanIdEditRoute: AppContentPlansPlanIdEditRoute,
-}
-
-const AppContentPlansRouteWithChildren = AppContentPlansRoute._addFileChildren(
-  AppContentPlansRouteChildren,
-)
-
 interface AppRouteChildren {
   AppAutomationsRoute: typeof AppAutomationsRoute
   AppConnectionsRoute: typeof AppConnectionsRoute
-  AppContentPlansRoute: typeof AppContentPlansRouteWithChildren
+  AppContentPlansRoute: typeof AppContentPlansRoute
   AppIdentitiesRoute: typeof AppIdentitiesRoute
   AppJobsRoute: typeof AppJobsRoute
   AppKnowledgeRoute: typeof AppKnowledgeRoute
@@ -344,12 +330,14 @@ interface AppRouteChildren {
   AppSettingsRoute: typeof AppSettingsRoute
   AppSourcesRoute: typeof AppSourcesRoute
   AppWorkspaceRoute: typeof AppWorkspaceRoute
+  AppContentPlansNewRoute: typeof AppContentPlansNewRoute
+  AppContentPlansPlanIdEditRoute: typeof AppContentPlansPlanIdEditRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppAutomationsRoute: AppAutomationsRoute,
   AppConnectionsRoute: AppConnectionsRoute,
-  AppContentPlansRoute: AppContentPlansRouteWithChildren,
+  AppContentPlansRoute: AppContentPlansRoute,
   AppIdentitiesRoute: AppIdentitiesRoute,
   AppJobsRoute: AppJobsRoute,
   AppKnowledgeRoute: AppKnowledgeRoute,
@@ -358,6 +346,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppSettingsRoute: AppSettingsRoute,
   AppSourcesRoute: AppSourcesRoute,
   AppWorkspaceRoute: AppWorkspaceRoute,
+  AppContentPlansNewRoute: AppContentPlansNewRoute,
+  AppContentPlansPlanIdEditRoute: AppContentPlansPlanIdEditRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

@@ -1,10 +1,66 @@
 {
   "compilerOptions": {
-    "baseUrl": ".",
+    "target": "ES2024",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": false,
+    "types": ["node", "vite-plus/test/globals"],
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "noEmit": true,
     "paths": {
-      "@src/*": [
-        "src/*"
-      ]
+      "@trendpublish/article": ["./packages/article/src/index.ts"],
+      "@trendpublish/connectors": ["./packages/connectors/src/index.ts"],
+      "@trendpublish/contracts": ["./packages/contracts/src/index.ts"],
+      "@trendpublish/contracts/article": ["./packages/contracts/src/article.ts"],
+      "@trendpublish/contracts/connectors": ["./packages/contracts/src/connectors.ts"],
+      "@trendpublish/contracts/execution": ["./packages/contracts/src/execution.ts"],
+      "@trendpublish/contracts/json": ["./packages/contracts/src/json.ts"],
+      "@trendpublish/contracts/publishing": ["./packages/contracts/src/publishing.ts"],
+      "@trendpublish/contracts/workspace": ["./packages/contracts/src/workspace.ts"],
+      "@trendpublish/core/application": ["./packages/core/src/application/index.ts"],
+      "@trendpublish/core/config": ["./packages/core/src/config.ts"],
+      "@trendpublish/core/logging": ["./packages/core/src/logging.ts"],
+      "@trendpublish/core/node": ["./packages/core/src/node.ts"],
+      "@trendpublish/core/observability": ["./packages/core/src/observability.ts"],
+      "@trendpublish/core/test": ["./packages/core/src/test.ts"],
+      "@trendpublish/core/utilities": ["./packages/core/src/utilities.ts"],
+      "@trendpublish/core/workspace": ["./packages/core/src/workspace/index.ts"],
+      "@trendpublish/ops/cloudflare-smoke": ["./packages/ops/src/cloudflare-smoke.ts"],
+      "@trendpublish/ops/cloudflare-sync-secrets": [
+        "./packages/ops/src/cloudflare-sync-secrets.ts"
+      ],
+      "@trendpublish/ops/doctor": ["./packages/ops/src/doctor.ts"],
+      "@trendpublish/ops/install-relay-systemd": ["./packages/ops/src/install-relay-systemd.ts"],
+      "@trendpublish/ops/print-relay-systemd": ["./packages/ops/src/print-relay-systemd.ts"],
+      "@trendpublish/publishing": ["./packages/publishing/src/index.ts"],
+      "@trendpublish/runtime": ["./packages/runtime/src/index.ts"],
+      "@trendpublish/server/local-state": [
+        "./apps/server/src/platform/local/sqlite-state-store.ts"
+      ],
+      "@trendpublish/server/server": ["./apps/server/src/server.ts"]
     }
-  }
+  },
+  "include": [
+    "apps/server/src/**/*.ts",
+    "packages/**/*.ts",
+    "packages/**/*.d.ts",
+    "scripts/**/*.ts",
+    "types/**/*.d.ts",
+    "trendpublish.config*.ts",
+    "vitest.config.ts",
+    "apps/server/trendpublish.config.cloudflare.ts",
+    "apps/server/trendpublish.config.docker.example.ts",
+    "apps/server/trendpublish.config.example.ts",
+    "apps/server/trendpublish.config.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "apps/dashboard/node_modules",
+    "apps/dashboard/src",
+    "dist",
+    "apps/server/src/**/*.test.ts",
+    "packages/**/*.test.ts",
+    "packages/**/test/**/*.ts"
+  ]
 }

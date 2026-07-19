@@ -81,3 +81,10 @@ export function readBoolean(value: unknown, path: string[], fallback = false) {
 export function clampText(value: string | undefined, fallback = "-") {
   return value && value.trim() ? value.trim() : fallback;
 }
+
+export function splitLines(value: string): string[] {
+  return value
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}

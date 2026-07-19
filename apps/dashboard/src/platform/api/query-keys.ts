@@ -1,7 +1,7 @@
-export function dashboardQueryKeys(apiKey: string) {
+export function dashboardQueryKeys() {
   return {
-    root: ["workspace", apiKey] as const,
-    snapshot: ["workspace", apiKey, "snapshot"] as const,
-    job: (jobId: string | null) => ["workspace", apiKey, "job", jobId] as const,
+    root: ["workspace"] as const,
+    snapshot: ["workspace", "snapshot"] as const,
+    job: (jobId: string | null) => ["workspace", "job", jobId] as const,
   };
 }

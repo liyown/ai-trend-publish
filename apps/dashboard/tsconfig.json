@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "resolvePackageJsonImports": true,
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "paths": {
+      "#components/*": ["./src/components/*"],
+      "#hooks/*": ["./src/hooks/*"],
+      "#lib/*": ["./src/lib/*"],
+      "#platform/*": ["./src/platform/*"]
+    }
+  },
+  "include": ["src", "vite.config.ts"]
+}

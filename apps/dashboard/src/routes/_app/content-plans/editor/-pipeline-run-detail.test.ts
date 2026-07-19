@@ -1,7 +1,7 @@
 import { expect, test } from "vite-plus/test";
 import { TaskEffect, TaskStatus } from "@trendpublish/contracts";
 import type { TaskRecord } from "#platform/api/types.ts";
-import { pipelineStageForTask, stageDuration, stageStatus } from "./pipeline-run-detail.tsx";
+import { pipelineStageForTask, stageDuration, stageStatus } from "./-pipeline-run-detail.tsx";
 
 test("quality tasks are grouped under the review and revision stage", () => {
   expect(pipelineStageForTask("quality/evaluate/1")).toBe("quality");

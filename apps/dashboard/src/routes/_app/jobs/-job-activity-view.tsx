@@ -8,7 +8,7 @@ import {
   runningTaskActivity,
   streamStateLabel,
   waitingActivity,
-} from "./job-activity.ts";
+} from "./-job-activity.ts";
 
 export function JobActivityView({
   events,

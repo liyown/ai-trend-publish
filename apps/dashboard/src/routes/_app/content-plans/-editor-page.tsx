@@ -7,9 +7,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createContentPlan, updateContentPlan } from "#platform/api/content-plans.ts";
 import { Button } from "#components/ui/button.tsx";
 import { Tabs } from "#components/ui/tabs.tsx";
-import { capabilityConnections, ConfigView, type SectionId } from "./editor/config-view.tsx";
-import { ContentPlanDebugView, PlanRunHistoryView } from "./editor/plan-runtime-views.tsx";
-import { applyChannelRequirements, requiresWeixinCover } from "./editor/requirements.ts";
+import { capabilityConnections, ConfigView, type SectionId } from "./editor/-config-view.tsx";
+import { ContentPlanDebugView, PlanRunHistoryView } from "./editor/-plan-runtime-views.tsx";
+import { applyChannelRequirements, requiresWeixinCover } from "./editor/-requirements.ts";
 
 type EditorView = "config" | "debug" | "runs";
 

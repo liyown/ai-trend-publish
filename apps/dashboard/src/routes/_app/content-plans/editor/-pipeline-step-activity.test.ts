@@ -9,7 +9,7 @@ import {
   stepModelMetrics,
   stepModelText,
   stepSummary,
-} from "./pipeline-step-activity.ts";
+} from "./-pipeline-step-activity.ts";
 
 test("stepLabel maps known step kinds to Chinese labels", () => {
   expect(stepLabel("research/internal/plan-queries")).toBe("规划检索词");

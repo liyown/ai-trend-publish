@@ -12,8 +12,8 @@ import { EmptyState } from "#components/product/empty-state.tsx";
 import { FormField } from "#components/product/form-field.tsx";
 import { cn } from "#lib/utils.ts";
 import { FormError } from "#components/product/form-error.tsx";
-import { jobStatusTone, jobTypeLabel } from "../../jobs/job-presentation.ts";
-import { PipelineRunDetail } from "./pipeline-run-detail.tsx";
+import { jobStatusTone, jobTypeLabel } from "../../jobs/-job-presentation.ts";
+import { PipelineRunDetail } from "./-pipeline-run-detail.tsx";
 
 export function ContentPlanDebugView({ planId, dirty }: { planId?: string; dirty: boolean }) {
   const refresh = useWorkspaceRefresh();

@@ -19,7 +19,7 @@ import { Badge } from "#components/ui/badge.tsx";
 import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
 import { FormError } from "#components/product/form-error.tsx";
 import { PageGrid } from "#components/product/page-grid.tsx";
-import { ArticleDocumentView } from "./library/article-document-view.tsx";
+import { ArticleDocumentView } from "./library/-article-document-view.tsx";
 
 export function LibraryPage() {
   const { data: workspace } = useWorkspaceSnapshot();

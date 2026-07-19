@@ -25,10 +25,10 @@ import { EmptyState } from "#components/product/empty-state.tsx";
 import { FormField } from "#components/product/form-field.tsx";
 import { cn } from "#lib/utils.ts";
 import { FormError } from "#components/product/form-error.tsx";
-import { AssociationList } from "./association-list.tsx";
-import { PipelineOverview } from "./pipeline-overview.tsx";
-import { defaultPluginSelection, PluginSettings } from "./plugin-settings.tsx";
-import { isWeixinPublishTarget, requiresWeixinCover } from "./requirements.ts";
+import { AssociationList } from "./-association-list.tsx";
+import { PipelineOverview } from "./-pipeline-overview.tsx";
+import { defaultPluginSelection, PluginSettings } from "./-plugin-settings.tsx";
+import { isWeixinPublishTarget, requiresWeixinCover } from "./-requirements.ts";
 
 const sections = [
   ["basic", "基本设置", "名称与生成模型", Settings2],

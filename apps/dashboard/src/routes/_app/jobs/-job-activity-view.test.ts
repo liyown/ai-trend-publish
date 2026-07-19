@@ -3,8 +3,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vite-plus/test";
 import { JobStatus } from "@trendpublish/contracts";
 import type { RuntimeEvent } from "#platform/api/types.ts";
-import { compactActivityPreview, describeRuntimeEvent } from "./job-activity.ts";
-import { JobActivityView } from "./job-activity-view.tsx";
+import { compactActivityPreview, describeRuntimeEvent } from "./-job-activity.ts";
+import { JobActivityView } from "./-job-activity-view.tsx";
 
 test("model activity aggregates streamed deltas for the same task", () => {
   const events = [

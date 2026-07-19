@@ -5,7 +5,7 @@ import type { JobRecord, RuntimeEvent, TaskRecord } from "#platform/api/types.ts
 import { Badge } from "#components/ui/badge.tsx";
 import { cn } from "#lib/utils.ts";
 import { FormError } from "#components/product/form-error.tsx";
-import { jobStatusTone } from "../../jobs/job-presentation.ts";
+import { jobStatusTone } from "../../jobs/-job-presentation.ts";
 import {
   sortStepsByStart,
   stepDefaultsOpen,
@@ -13,7 +13,7 @@ import {
   stepModelMetrics,
   stepModelText,
   stepSummary,
-} from "./pipeline-step-activity.ts";
+} from "./-pipeline-step-activity.ts";
 
 export function PipelineRunDetail({
   data,

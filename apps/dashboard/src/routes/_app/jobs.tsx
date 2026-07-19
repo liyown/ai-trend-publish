@@ -12,8 +12,8 @@ import { Badge } from "#components/ui/badge.tsx";
 import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
 import { FormError } from "#components/product/form-error.tsx";
 import { PageGrid } from "#components/product/page-grid.tsx";
-import { isResumableJob, jobStatusTone, jobTypeLabel } from "./jobs/job-presentation.ts";
-import { JobActivityView } from "./jobs/job-activity-view.tsx";
+import { isResumableJob, jobStatusTone, jobTypeLabel } from "./jobs/-job-presentation.ts";
+import { JobActivityView } from "./jobs/-job-activity-view.tsx";
 
 export const jobsKey = () => ["jobs"] as const;
 export const jobKey = (id: string) => ["jobs", id] as const;

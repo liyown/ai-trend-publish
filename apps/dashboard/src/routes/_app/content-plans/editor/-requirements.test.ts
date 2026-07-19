@@ -1,7 +1,7 @@
 import { expect, test } from "vite-plus/test";
 import { ArticlePluginId, ChannelId } from "@trendpublish/contracts";
 import type { SaveContentPlanPayload, WorkspaceSnapshot } from "#platform/api/types.ts";
-import { applyChannelRequirements, requiresWeixinCover } from "./requirements.ts";
+import { applyChannelRequirements, requiresWeixinCover } from "./-requirements.ts";
 
 test("Weixin targets lock an essential cover but keep connection selection explicit", () => {
   const form = {

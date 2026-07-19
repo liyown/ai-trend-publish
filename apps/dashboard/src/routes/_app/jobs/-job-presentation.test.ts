@@ -1,6 +1,6 @@
 import { expect, test } from "vite-plus/test";
 import { JobType } from "@trendpublish/contracts";
-import { isResumableJob } from "./job-presentation.ts";
+import { isResumableJob } from "./-job-presentation.ts";
 
 test("all executable job types can resume from the dashboard", () => {
   expect(isResumableJob({ type: JobType.GenerateArticle })).toBe(true);

@@ -3,8 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { JobStatus, type JobStatus as JobStatusValue } from "@trendpublish/contracts";
 import type { RuntimeEvent } from "./types.ts";
 import { dashboardErrorMessage, isPermanentEventStreamError } from "./dashboard-errors.ts";
-import { useDashboardApi } from "../../app/providers.tsx";
-import { dashboardQueryKeys } from "#platform/api/query-keys.ts";
+import { getJob, streamJobEvents } from "./jobs.ts";
 
 export const ACTIVE_JOB_REFRESH_MS = 2000;
 const EVENT_STREAM_RETRY_BASE_MS = 1000;
@@ -23,7 +22,6 @@ export interface JobMonitorOptions {
 }
 
 export function useJobMonitor(jobId: string | null, { live = true }: JobMonitorOptions = {}) {
-  const api = useDashboardApi();
   const queryClient = useQueryClient();
   const generation = useRef(0);
   const [eventState, setEventState] = useState<RuntimeEventBufferState>({
@@ -36,8 +34,8 @@ export function useJobMonitor(jobId: string | null, { live = true }: JobMonitorO
     error?: string;
   }>({ jobId: null, state: "idle" });
   const query = useQuery({
-    queryKey: dashboardQueryKeys().job(jobId),
-    queryFn: () => api.getJob(jobId ?? ""),
+    queryKey: ["jobs", jobId],
+    queryFn: () => getJob(jobId ?? ""),
     enabled: Boolean(jobId),
     refetchInterval: (currentQuery) => {
       if (!live || !jobId) return false;
@@ -80,7 +78,7 @@ export function useJobMonitor(jobId: string | null, { live = true }: JobMonitorO
         state: lastEventId || retryAttempt ? "retrying" : "connecting",
       });
       try {
-        await api.streamJobEvents(jobId, {
+        await streamJobEvents(jobId, {
           signal: controller.signal,
           lastEventId,
           onOpen() {
@@ -97,12 +95,12 @@ export function useJobMonitor(jobId: string | null, { live = true }: JobMonitorO
             setEventState((current) => mergeJobRuntimeEvent(current, jobId, event));
             if (event.type.startsWith("task.") || event.type.startsWith("job.")) {
               void queryClient.invalidateQueries({
-                queryKey: dashboardQueryKeys().job(jobId),
+                queryKey: ["jobs", jobId],
               });
             }
             if (event.type === "job.status.changed") {
               void queryClient.invalidateQueries({
-                queryKey: dashboardQueryKeys().snapshot,
+                queryKey: ["workspace", "snapshot"],
               });
             }
           },
@@ -135,7 +133,7 @@ export function useJobMonitor(jobId: string | null, { live = true }: JobMonitorO
       controller.abort();
       if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [api, jobId, queryClient, streamPolicy.connect, streamPolicy.retry]);
+  }, [jobId, queryClient, streamPolicy.connect, streamPolicy.retry]);
 
   return {
     ...query,

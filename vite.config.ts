@@ -19,38 +19,51 @@ export default defineConfig({
   },
   run: {
     tasks: {
-      dev: {
-        command: "node scripts/trendpublish.mjs dev",
-        cache: false,
-      },
-      "dev:api": {
-        command: "vp run @trendpublish/server#dev",
-        cache: false,
-      },
-      "dev:dashboard": {
-        command: "vp run @trendpublish/dashboard#dev",
-        cache: false,
-      },
-      trend: {
-        command: "node scripts/trendpublish.mjs",
-        cache: false,
-      },
-      doctor: { command: "vp exec tsx scripts/doctor.ts" },
-      relay: {
-        command: "vp run @trendpublish/server#relay",
-        cache: false,
-      },
+      // ── 开发 ────────────────────────────────────────────────────────────────
+      dev: { command: "vp exec tsx packages/ops/src/dev.ts", cache: false },
+      "dev:api": { command: "vp run @trendpublish/server#dev", cache: false },
+      "dev:dashboard": { command: "vp run @trendpublish/dashboard#dev", cache: false },
+
+      // ── 诊断 ────────────────────────────────────────────────────────────────
+      doctor: { command: "vp exec tsx packages/ops/src/doctor.ts", cache: false },
+
+      // ── Weixin relay ────────────────────────────────────────────────────────
+      relay: { command: "vp run @trendpublish/server#relay", cache: false },
       "relay:systemd": {
-        command: "vp exec tsx scripts/print-relay-systemd.ts",
+        command: "vp exec tsx packages/ops/src/print-relay-systemd.ts",
         cache: false,
       },
       "relay:install": {
-        command: "vp exec tsx scripts/install-relay-systemd.ts",
+        command: "vp exec tsx packages/ops/src/install-relay-systemd.ts",
         cache: false,
       },
-      docker: { command: "node scripts/trendpublish.mjs docker", cache: false },
-      "docker:relay": {
-        command: "node scripts/trendpublish.mjs docker relay",
+
+      // ── Docker ──────────────────────────────────────────────────────────────
+      "docker:up": { command: "docker compose up -d", cache: false },
+      "docker:down": { command: "docker compose down", cache: false },
+      "docker:logs": { command: "docker compose logs -f trendpublish", cache: false },
+      "docker:build": { command: "docker build -t trendpublish .", cache: false },
+      "docker:relay:up": {
+        command: "docker compose -f docker-compose.relay.yml up -d",
+        cache: false,
+      },
+      "docker:relay:down": {
+        command: "docker compose -f docker-compose.relay.yml down",
+        cache: false,
+      },
+      "docker:relay:logs": {
+        command: "docker compose -f docker-compose.relay.yml logs -f weixin-relay",
+        cache: false,
+      },
+
+      // ── Cloudflare ──────────────────────────────────────────────────────────
+      "cf:dev": { command: "vp exec wrangler dev", cache: false },
+      "cf:migrate:local": {
+        command: "vp exec wrangler d1 migrations apply ARTICLE_DB --local",
+        cache: false,
+      },
+      "cf:migrate": {
+        command: "vp exec wrangler d1 migrations apply ARTICLE_DB --remote",
         cache: false,
       },
       "cf:dry-run": {
@@ -62,31 +75,20 @@ export default defineConfig({
         command: "vp run @trendpublish/dashboard#build && vp exec wrangler deploy",
         cache: false,
       },
-      "cf:dev": { command: "vp exec wrangler dev", cache: false },
-      "cf:migrate": {
-        command: "vp exec wrangler d1 migrations apply ARTICLE_DB --remote",
-        cache: false,
-      },
-      "cf:migrate:local": {
-        command: "vp exec wrangler d1 migrations apply ARTICLE_DB --local",
-        cache: false,
-      },
       "cf:sync-secrets": {
-        command: "vp exec tsx scripts/cloudflare-sync-secrets.ts",
+        command: "vp exec tsx packages/ops/src/cloudflare-sync-secrets.ts",
         cache: false,
       },
-      "cf:smoke": {
-        command: "vp exec tsx scripts/cloudflare-smoke.ts",
-        cache: false,
-      },
-      "docs:dev": {
-        command: "vp exec vitepress dev docs",
-        cache: false,
-      },
+      "cf:smoke": { command: "vp exec tsx packages/ops/src/cloudflare-smoke.ts", cache: false },
+
+      // ── 文档 ────────────────────────────────────────────────────────────────
+      "docs:dev": { command: "vp exec vitepress dev docs", cache: false },
       "docs:build": {
         command: "vp exec vitepress build docs",
         input: ["docs/**", "package.json", "pnpm-lock.yaml"],
       },
+
+      // ── CI ──────────────────────────────────────────────────────────────────
       verify: {
         command:
           "vp check && vp test && vp run @trendpublish/dashboard#check && vp run @trendpublish/dashboard#test && vp run @trendpublish/dashboard#build",

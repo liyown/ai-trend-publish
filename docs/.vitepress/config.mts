@@ -1,9 +1,7 @@
 import { defineConfig } from "vitepress";
 
 const repoName = process.env.GITHUB_REPOSITORY?.split("/")[1];
-const defaultBase = process.env.GITHUB_ACTIONS && repoName
-  ? `/${repoName}/`
-  : "/";
+const defaultBase = process.env.GITHUB_ACTIONS && repoName ? `/${repoName}/` : "/";
 
 export default defineConfig({
   lang: "zh-CN",
@@ -18,10 +16,8 @@ export default defineConfig({
       { text: "快速开始", link: "/getting-started" },
       { text: "配置", link: "/configuration" },
       { text: "架构", link: "/architecture" },
-      { text: "编辑自动化", link: "/editorial-automation" },
       { text: "部署", link: "/deployment" },
-      { text: "帮助", link: "/help" },
-      { text: "模板", link: "/templates" },
+      { text: "API", link: "/api/rest-api" },
     ],
     sidebar: [
       {
@@ -31,37 +27,19 @@ export default defineConfig({
           { text: "快速开始", link: "/getting-started" },
           { text: "配置说明", link: "/configuration" },
           { text: "架构总览", link: "/architecture" },
-          { text: "Editorial Automation 计划", link: "/editorial-automation" },
           { text: "部署与发布", link: "/deployment" },
           { text: "帮助文档", link: "/help" },
         ],
       },
       {
-        text: "接口与集成",
+        text: "扩展与接口",
         items: [
-          { text: "JSON-RPC API", link: "/api/json-rpc-api" },
-          {
-            text: "钉钉 Webhook 指南",
-            link: "/integrations/dingtalk-webhook-guide",
-          },
-          {
-            text: "Jina AI 集成指南",
-            link: "/integrations/jina-integration-guide",
-          },
-          {
-            text: "数据获取 API",
-            link: "/integrations/data-fetching-apis",
-          },
+          { text: "REST API", link: "/api/rest-api" },
+          { text: "Connector 扩展", link: "/connectors" },
         ],
       },
-      {
-        text: "模板",
-        items: [{ text: "模板展示", link: "/templates" }],
-      },
     ],
-    socialLinks: [
-      { icon: "github", link: "https://github.com/liyown/ai-trend-publish" },
-    ],
+    socialLinks: [{ icon: "github", link: "https://github.com/liyown/ai-trend-publish" }],
     search: {
       provider: "local",
     },

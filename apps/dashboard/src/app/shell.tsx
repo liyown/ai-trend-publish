@@ -9,8 +9,7 @@ import { Button, IconButton } from "#components/ui/button.tsx";
 import { Skeleton } from "#components/ui/skeleton.tsx";
 import { cn } from "../lib/utils.ts";
 import type { ContentIdentity } from "#platform/api/types.ts";
-import { useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
-import { dashboardQueryKeys } from "#platform/api/query-keys.ts";
+import { useWorkspaceSnapshot, workspaceRootKey } from "#platform/api/use-workspace-snapshot.ts";
 import {
   dashboardErrorMessage,
   isUnauthorizedDashboardError,
@@ -46,7 +45,7 @@ export function WorkspaceShell() {
 
   const refreshWorkspace = () =>
     void queryClient.invalidateQueries({
-      queryKey: dashboardQueryKeys().root,
+      queryKey: workspaceRootKey(),
     });
 
   const toggleCollapsed = () => {

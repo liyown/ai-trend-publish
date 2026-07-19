@@ -10,21 +10,19 @@ import { Textarea } from "#components/ui/textarea.tsx";
 import { EmptyState } from "#components/product/empty-state.tsx";
 import { FormField } from "#components/product/form-field.tsx";
 import { cn } from "#lib/utils.ts";
-import { useAuth } from "../../../app/auth.tsx";
 import { useDashboardApi } from "../../../app/providers.tsx";
-import { FormError } from "../common.tsx";
-import { jobStatusTone, jobTypeLabel } from "../job-presentation.ts";
+import { FormError } from "#components/product/form-error.tsx";
+import { jobStatusTone, jobTypeLabel } from "../../jobs/job-presentation.ts";
 import { PipelineRunDetail } from "./pipeline-run-detail.tsx";
 
 export function ContentPlanDebugView({ planId, dirty }: { planId?: string; dirty: boolean }) {
-  const { apiKey } = useAuth();
   const api = useDashboardApi();
   const refresh = useWorkspaceRefresh();
   const [topic, setTopic] = useState("");
   const [jobId, setJobId] = useState<string | null>(null);
   const run = useMutation({
     mutationFn: () =>
-      api.startArticleGeneration(apiKey, {
+      api.startArticleGeneration({
         planId: planId!,
         requestedTopic: topic.trim() || undefined,
       }),

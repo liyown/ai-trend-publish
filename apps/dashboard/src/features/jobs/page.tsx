@@ -3,14 +3,15 @@ import { useMutation } from "@tanstack/react-query";
 import { JobStatus, TaskStatus } from "@trendpublish/contracts";
 import { RotateCcw } from "lucide-react";
 import type { JobRecord } from "#platform/api/types.ts";
-import { useAuth } from "../../app/auth.tsx";
 import { useDashboardApi } from "../../app/providers.tsx";
 import { useJobMonitor } from "#platform/api/use-job-monitor.ts";
 import { useWorkspaceRefresh, useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
 import { Button } from "#components/ui/button.tsx";
 import { AppDialog } from "#components/product/app-dialog.tsx";
 import { Badge } from "#components/ui/badge.tsx";
-import { EntityList, EntityRow, FormError, StudioPage } from "./common.tsx";
+import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
+import { FormError } from "#components/product/form-error.tsx";
+import { PageGrid } from "#components/product/page-grid.tsx";
 import { JobActivityView } from "./job-activity-view.tsx";
 import { isResumableJob, jobStatusTone, jobTypeLabel } from "./job-presentation.ts";
 
@@ -19,7 +20,7 @@ export function JobsPage() {
   const [selected, setSelected] = useState<string | null>(null);
   const jobs = workspace?.jobs ?? [];
   return (
-    <StudioPage>
+    <PageGrid>
       <EntityList
         title="运行记录"
         description="打开任务可查看真实检查点、尝试次数和副作用类型。"
@@ -46,7 +47,7 @@ export function JobsPage() {
         ))}
       </EntityList>
       <JobDialog jobId={selected} onOpenChange={(open) => !open && setSelected(null)} />
-    </StudioPage>
+    </PageGrid>
   );
 }
 
@@ -58,11 +59,10 @@ function JobDialog({
   onOpenChange(open: boolean): void;
 }) {
   const { data, error, runtimeEvents, streamState, streamError } = useJobMonitor(jobId);
-  const { apiKey } = useAuth();
   const api = useDashboardApi();
   const refresh = useWorkspaceRefresh();
   const resume = useMutation({
-    mutationFn: (job: JobRecord) => api.resumeJob(apiKey, job),
+    mutationFn: (job: JobRecord) => api.resumeJob(job),
     onSuccess: refresh,
   });
   return (

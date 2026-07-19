@@ -24,7 +24,7 @@ import {
 import { EmptyState } from "#components/product/empty-state.tsx";
 import { FormField } from "#components/product/form-field.tsx";
 import { cn } from "#lib/utils.ts";
-import { FormError } from "../common.tsx";
+import { FormError } from "#components/product/form-error.tsx";
 import { AssociationList } from "./association-list.tsx";
 import { PipelineOverview } from "./pipeline-overview.tsx";
 import { defaultPluginSelection, PluginSettings } from "./plugin-settings.tsx";

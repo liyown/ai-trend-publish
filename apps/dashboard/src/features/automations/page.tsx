@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Play, Plus } from "lucide-react";
 import type { Automation, SaveAutomationPayload } from "#platform/api/types.ts";
-import { useAuth } from "../../app/auth.tsx";
 import { useDashboardApi } from "../../app/providers.tsx";
 import { useWorkspaceRefresh, useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
 import { Button } from "#components/ui/button.tsx";
@@ -12,7 +11,10 @@ import { NativeSelect } from "#components/ui/select.tsx";
 import { AppDialog, AppDialogFooter } from "#components/product/app-dialog.tsx";
 import { FormField } from "#components/product/form-field.tsx";
 import { Badge } from "#components/ui/badge.tsx";
-import { EntityList, EntityRow, FormError, splitLines, StudioPage } from "./common.tsx";
+import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
+import { FormError } from "#components/product/form-error.tsx";
+import { PageGrid } from "#components/product/page-grid.tsx";
+import { splitLines } from "#lib/utils.ts";
 
 const emptyAutomation = (): SaveAutomationPayload => ({
   name: "",
@@ -25,23 +27,20 @@ const emptyAutomation = (): SaveAutomationPayload => ({
 
 export function AutomationsPage() {
   const { data: workspace, error: workspaceError } = useWorkspaceSnapshot({ live: false });
-  const { apiKey } = useAuth();
   const api = useDashboardApi();
   const refresh = useWorkspaceRefresh();
   const [editing, setEditing] = useState<Automation | "new" | null>(null);
   const [running, setRunning] = useState<Automation | null>(null);
   const save = useMutation({
     mutationFn: (body: SaveAutomationPayload) =>
-      editing === "new"
-        ? api.createAutomation(apiKey, body)
-        : api.updateAutomation(apiKey, editing!.id, body),
+      editing === "new" ? api.createAutomation(body) : api.updateAutomation(editing!.id, body),
     onSuccess: () => {
       setEditing(null);
       refresh();
     },
   });
   const remove = useMutation({
-    mutationFn: (id: string) => api.deleteAutomation(apiKey, id),
+    mutationFn: (id: string) => api.deleteAutomation(id),
     onSuccess: refresh,
   });
   const automations = workspace?.automations ?? [];
@@ -50,7 +49,7 @@ export function AutomationsPage() {
   if (workspaceError && !workspace) return null;
 
   return (
-    <StudioPage>
+    <PageGrid>
       <EntityList
         title="任务列表"
         description="任务只负责选择内容方案和触发方式；内容与发布配置由方案自身维护。"
@@ -87,7 +86,7 @@ export function AutomationsPage() {
               meta={<Badge>{triggerLabel(automation.trigger.type)}</Badge>}
               onEdit={() => setEditing(automation)}
               onDelete={() =>
-                confirm(`删除任务“${automation.name}”？`) && remove.mutate(automation.id)
+                confirm(`删除任务"${automation.name}"？`) && remove.mutate(automation.id)
               }
             >
               <Button
@@ -110,7 +109,7 @@ export function AutomationsPage() {
         error={save.error}
       />
       <RunDialog automation={running} onOpenChange={(open) => !open && setRunning(null)} />
-    </StudioPage>
+    </PageGrid>
   );
 }
 
@@ -355,14 +354,13 @@ function RunDialog({
   automation: Automation | null;
   onOpenChange(open: boolean): void;
 }) {
-  const { apiKey } = useAuth();
   const api = useDashboardApi();
   const refresh = useWorkspaceRefresh();
   const [topic, setTopic] = useState("");
   useEffect(() => setTopic(""), [automation]);
   const run = useMutation({
     mutationFn: () =>
-      api.startAutomationRun(apiKey, automation!.id, {
+      api.startAutomationRun(automation!.id, {
         requestedTopic: topic.trim() || undefined,
       }),
     onSuccess: () => {

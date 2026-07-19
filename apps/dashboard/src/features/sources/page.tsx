@@ -6,7 +6,6 @@ import type {
   SourceCollection,
   SourceItem,
 } from "#platform/api/types.ts";
-import { useAuth } from "../../app/auth.tsx";
 import { useDashboardApi } from "../../app/providers.tsx";
 import { useWorkspaceRefresh, useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
 import { Button, IconButton } from "#components/ui/button.tsx";
@@ -14,7 +13,9 @@ import { Input } from "#components/ui/input.tsx";
 import { NativeSelect } from "#components/ui/select.tsx";
 import { AppDialog, AppDialogFooter } from "#components/product/app-dialog.tsx";
 import { FormField } from "#components/product/form-field.tsx";
-import { EntityList, EntityRow, FormError, StudioPage } from "./common.tsx";
+import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
+import { FormError } from "#components/product/form-error.tsx";
+import { PageGrid } from "#components/product/page-grid.tsx";
 
 const newItem = (kind: SourceItem["kind"] = "url"): SourceItem =>
   kind === "url"
@@ -23,18 +24,17 @@ const newItem = (kind: SourceItem["kind"] = "url"): SourceItem =>
 
 export function SourcesPage() {
   const { data: workspace } = useWorkspaceSnapshot({ live: false });
-  const { apiKey } = useAuth();
   const api = useDashboardApi();
   const refresh = useWorkspaceRefresh();
   const [editing, setEditing] = useState<SourceCollection | "new" | null>(null);
   const remove = useMutation({
-    mutationFn: (id: string) => api.deleteSourceCollection(apiKey, id),
+    mutationFn: (id: string) => api.deleteSourceCollection(id),
     onSuccess: refresh,
   });
   const collections = workspace?.sourceCollections ?? [];
 
   return (
-    <StudioPage>
+    <PageGrid>
       <EntityList
         title="内容来源"
         description="只维护要直接抓取的网址和用于发现内容的搜索词；使用哪些连接由内容方案决定。"
@@ -55,7 +55,7 @@ export function SourcesPage() {
             description={sourceCollectionSummary(collection)}
             status={collection.enabled ? "ready" : "disabled"}
             onEdit={() => setEditing(collection)}
-            onDelete={() => confirm(`删除“${collection.name}”？`) && remove.mutate(collection.id)}
+            onDelete={() => confirm(`删除"${collection.name}"？`) && remove.mutate(collection.id)}
           />
         ))}
       </EntityList>
@@ -64,7 +64,7 @@ export function SourcesPage() {
         open={Boolean(editing)}
         onOpenChange={(open) => !open && setEditing(null)}
       />
-    </StudioPage>
+    </PageGrid>
   );
 }
 
@@ -77,7 +77,6 @@ function SourceDialog({
   open: boolean;
   onOpenChange(open: boolean): void;
 }) {
-  const { apiKey } = useAuth();
   const api = useDashboardApi();
   const refresh = useWorkspaceRefresh();
   const [name, setName] = useState("");
@@ -92,8 +91,8 @@ function SourceDialog({
   const save = useMutation({
     mutationFn: (body: SaveSourceCollectionPayload) =>
       source === "new"
-        ? api.createSourceCollection(apiKey, body)
-        : api.updateSourceCollection(apiKey, source!.id, body),
+        ? api.createSourceCollection(body)
+        : api.updateSourceCollection(source!.id, body),
     onSuccess: () => {
       refresh();
       onOpenChange(false);

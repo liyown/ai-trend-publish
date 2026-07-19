@@ -7,7 +7,6 @@ import type {
   JsonValue,
   SaveConnectionPayload,
 } from "#platform/api/types.ts";
-import { useAuth } from "../../app/auth.tsx";
 import { useDashboardApi } from "../../app/providers.tsx";
 import { useWorkspaceRefresh, useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
 import { Button } from "#components/ui/button.tsx";
@@ -17,27 +16,28 @@ import { Textarea } from "#components/ui/textarea.tsx";
 import { AppDialog, AppDialogFooter } from "#components/product/app-dialog.tsx";
 import { FormField } from "#components/product/form-field.tsx";
 import { Badge } from "#components/ui/badge.tsx";
-import { describeError, EntityList, EntityRow, FormError, StudioPage } from "./common.tsx";
+import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
+import { FormError, describeError } from "#components/product/form-error.tsx";
+import { PageGrid } from "#components/product/page-grid.tsx";
 import { suggestConnectionName } from "./connection-naming.ts";
 
 type Editor = { definition: ConnectorDefinition; connection?: Connection; suggestedName?: string };
 
 export function ConnectionsPage() {
   const { data: workspace } = useWorkspaceSnapshot({ live: false });
-  const { apiKey } = useAuth();
   const api = useDashboardApi();
   const refresh = useWorkspaceRefresh();
   const [editor, setEditor] = useState<Editor | null>(null);
   const [choose, setChoose] = useState(false);
   const remove = useMutation({
-    mutationFn: (id: string) => api.deleteConnection(apiKey, id),
+    mutationFn: (id: string) => api.deleteConnection(id),
     onSuccess: refresh,
   });
   const definitions = workspace?.connectorDefinitions ?? [];
   const connections = workspace?.connections ?? [];
   const byId = useMemo(() => new Map(definitions.map((item) => [item.id, item])), [definitions]);
   return (
-    <StudioPage>
+    <PageGrid>
       <EntityList
         title="连接列表"
         description="超时、重试与恢复不属于连接配置；调用失败会由运行记录和检查点安全处理。"
@@ -66,7 +66,7 @@ export function ConnectionsPage() {
               }
               onEdit={() => definition && setEditor({ definition, connection })}
               onDelete={() =>
-                confirm(`删除连接“${connection.name}”？`) && remove.mutate(connection.id)
+                confirm(`删除连接"${connection.name}"？`) && remove.mutate(connection.id)
               }
             />
           );
@@ -111,7 +111,7 @@ export function ConnectionsPage() {
         </div>
       </AppDialog>
       <ConnectionDialog editor={editor} onOpenChange={(open) => !open && setEditor(null)} />
-    </StudioPage>
+    </PageGrid>
   );
 }
 
@@ -122,7 +122,6 @@ function ConnectionDialog({
   editor: Editor | null;
   onOpenChange(open: boolean): void;
 }) {
-  const { apiKey } = useAuth();
   const api = useDashboardApi();
   const refresh = useWorkspaceRefresh();
   const [name, setName] = useState("");
@@ -178,16 +177,18 @@ function ConnectionDialog({
   const save = useMutation({
     mutationFn: () =>
       editor?.connection
-        ? api.updateConnection(apiKey, editor.connection.id, payload())
-        : api.createConnection(apiKey, payload()),
+        ? api.updateConnection(editor.connection.id, payload())
+        : api.createConnection(payload()),
     onSuccess: () => {
       refresh();
       onOpenChange(false);
     },
   });
   const test = useMutation({
-    mutationFn: () => api.testConnection(apiKey, payload()),
-    onSuccess: ({ test }) => setResult(test),
+    mutationFn: () => api.testConnection(payload()),
+    onSuccess: (data: {
+      test: { success: boolean; message: string; latencyMs: number; checkedAt: string };
+    }) => setResult(data.test),
   });
   if (!editor) return null;
   const fields = [...editor.definition.fields].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));

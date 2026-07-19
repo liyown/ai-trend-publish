@@ -8,7 +8,6 @@ import type {
   SaveChannelAccountPayload,
   SavePublishTargetPayload,
 } from "#platform/api/types.ts";
-import { useAuth } from "../../app/auth.tsx";
 import { useDashboardApi } from "../../app/providers.tsx";
 import { useWorkspaceRefresh, useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
 import { Button } from "#components/ui/button.tsx";
@@ -17,11 +16,12 @@ import { NativeSelect } from "#components/ui/select.tsx";
 import { AppDialog, AppDialogFooter } from "#components/product/app-dialog.tsx";
 import { FormField } from "#components/product/form-field.tsx";
 import { Badge } from "#components/ui/badge.tsx";
-import { EntityList, EntityRow, FormError, StudioPage } from "./common.tsx";
+import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
+import { FormError } from "#components/product/form-error.tsx";
+import { PageGrid } from "#components/product/page-grid.tsx";
 
 export function PublishingPage() {
   const { data: workspace } = useWorkspaceSnapshot({ live: false });
-  const { apiKey } = useAuth();
   const api = useDashboardApi();
   const refresh = useWorkspaceRefresh();
   const [accountEditor, setAccountEditor] = useState<ChannelAccount | "new" | null>(null);
@@ -29,8 +29,8 @@ export function PublishingPage() {
   const saveAccount = useMutation({
     mutationFn: (body: SaveChannelAccountPayload) =>
       accountEditor === "new"
-        ? api.createChannelAccount(apiKey, body)
-        : api.updateChannelAccount(apiKey, accountEditor!.id, body),
+        ? api.createChannelAccount(body)
+        : api.updateChannelAccount(accountEditor!.id, body),
     onSuccess: () => {
       setAccountEditor(null);
       refresh();
@@ -39,25 +39,25 @@ export function PublishingPage() {
   const saveTarget = useMutation({
     mutationFn: (body: SavePublishTargetPayload) =>
       targetEditor === "new"
-        ? api.createPublishTarget(apiKey, body)
-        : api.updatePublishTarget(apiKey, targetEditor!.id, body),
+        ? api.createPublishTarget(body)
+        : api.updatePublishTarget(targetEditor!.id, body),
     onSuccess: () => {
       setTargetEditor(null);
       refresh();
     },
   });
   const deleteAccount = useMutation({
-    mutationFn: (id: string) => api.deleteChannelAccount(apiKey, id),
+    mutationFn: (id: string) => api.deleteChannelAccount(id),
     onSuccess: refresh,
   });
   const deleteTarget = useMutation({
-    mutationFn: (id: string) => api.deletePublishTarget(apiKey, id),
+    mutationFn: (id: string) => api.deletePublishTarget(id),
     onSuccess: refresh,
   });
   const accounts = workspace?.channelAccounts ?? [];
   const targets = workspace?.publishTargets ?? [];
   return (
-    <StudioPage>
+    <PageGrid>
       <EntityList
         title="渠道账号"
         description="凭证保存在连接中；渠道账号只保存渠道语义和公开设置。"
@@ -81,7 +81,7 @@ export function PublishingPage() {
               status={connection?.enabled ? "ready" : "warning"}
               onEdit={() => setAccountEditor(account)}
               onDelete={() =>
-                confirm(`删除“${account.name}”？`) && deleteAccount.mutate(account.id)
+                confirm(`删除"${account.name}"？`) && deleteAccount.mutate(account.id)
               }
             />
           );
@@ -108,7 +108,7 @@ export function PublishingPage() {
               status={account ? "ready" : "warning"}
               meta={<Badge>输出目标</Badge>}
               onEdit={() => setTargetEditor(target)}
-              onDelete={() => confirm(`删除“${target.name}”？`) && deleteTarget.mutate(target.id)}
+              onDelete={() => confirm(`删除"${target.name}"？`) && deleteTarget.mutate(target.id)}
             />
           );
         })}
@@ -129,7 +129,7 @@ export function PublishingPage() {
         saving={saveTarget.isPending}
         error={saveTarget.error}
       />
-    </StudioPage>
+    </PageGrid>
   );
 }
 

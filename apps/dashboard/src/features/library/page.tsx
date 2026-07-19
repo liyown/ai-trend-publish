@@ -7,7 +7,6 @@ import type {
   StoredContentPackage,
   StoredReviewRequest,
 } from "#platform/api/types.ts";
-import { useAuth } from "../../app/auth.tsx";
 import { useDashboardApi } from "../../app/providers.tsx";
 import { useWorkspaceRefresh, useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
 import { Button } from "#components/ui/button.tsx";
@@ -17,7 +16,9 @@ import { Textarea } from "#components/ui/textarea.tsx";
 import { AppDialog, AppDialogFooter } from "#components/product/app-dialog.tsx";
 import { FormField } from "#components/product/form-field.tsx";
 import { Badge } from "#components/ui/badge.tsx";
-import { EntityList, EntityRow, FormError, StudioPage } from "./common.tsx";
+import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
+import { FormError } from "#components/product/form-error.tsx";
+import { PageGrid } from "#components/product/page-grid.tsx";
 import { ArticleDocumentView } from "./article-document-view.tsx";
 
 export function LibraryPage() {
@@ -28,7 +29,7 @@ export function LibraryPage() {
   const packages = workspace?.contentPackages ?? [];
   const reviewRequests = (workspace?.reviewRequests ?? []).filter((item) => item.status === "open");
   return (
-    <StudioPage>
+    <PageGrid>
       <EntityList
         title="成品列表"
         description="发布适配器只消费版本化内容包，不读取生成目录或猜测文件名。"
@@ -66,7 +67,7 @@ export function LibraryPage() {
       />
       <PackageDialog value={viewing} onOpenChange={(open) => !open && setViewing(null)} />
       <PublishDialog value={publishing} onOpenChange={(open) => !open && setPublishing(null)} />
-    </StudioPage>
+    </PageGrid>
   );
 }
 
@@ -90,7 +91,6 @@ function ReviewDialog({
   value: StoredReviewRequest | null;
   onOpenChange(open: boolean): void;
 }) {
-  const { apiKey } = useAuth();
   const api = useDashboardApi();
   const refresh = useWorkspaceRefresh();
   const [source, setSource] = useState<ArticleSource | null>(null);
@@ -105,7 +105,7 @@ function ReviewDialog({
   const complete = useMutation({
     mutationFn: () => {
       if (!value || !source) throw new Error("待审内容尚未载入");
-      return api.submitEditedArticle(apiKey, {
+      return api.submitEditedArticle({
         planId: value.planId,
         reviewRequestId: value.id,
         source: {
@@ -406,7 +406,6 @@ function PublishDialog({
   onOpenChange(open: boolean): void;
 }) {
   const { data: workspace } = useWorkspaceSnapshot({ live: false });
-  const { apiKey } = useAuth();
   const api = useDashboardApi();
   const refresh = useWorkspaceRefresh();
   const candidates = useMemo(
@@ -415,7 +414,7 @@ function PublishDialog({
   );
   const [selected, setSelected] = useState<string[]>([]);
   const publish = useMutation({
-    mutationFn: () => api.startPublication(apiKey, { packageId: value!.id, targetIds: selected }),
+    mutationFn: () => api.startPublication({ packageId: value!.id, targetIds: selected }),
     onSuccess: () => {
       onOpenChange(false);
       refresh();

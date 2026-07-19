@@ -2,7 +2,6 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import type { ContentIdentity, SaveIdentityPayload } from "#platform/api/types.ts";
-import { useAuth } from "../../app/auth.tsx";
 import { useDashboardApi } from "../../app/providers.tsx";
 import { useWorkspaceRefresh, useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
 import { Button } from "#components/ui/button.tsx";
@@ -10,7 +9,10 @@ import { Input } from "#components/ui/input.tsx";
 import { Textarea } from "#components/ui/textarea.tsx";
 import { AppDialog, AppDialogFooter } from "#components/product/app-dialog.tsx";
 import { FormField } from "#components/product/form-field.tsx";
-import { EntityList, EntityRow, FormError, splitLines, StudioPage } from "./common.tsx";
+import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
+import { FormError } from "#components/product/form-error.tsx";
+import { PageGrid } from "#components/product/page-grid.tsx";
+import { splitLines } from "#lib/utils.ts";
 
 const blank: SaveIdentityPayload = {
   name: "",
@@ -23,27 +25,24 @@ const blank: SaveIdentityPayload = {
 
 export function IdentitiesPage() {
   const { data: workspace } = useWorkspaceSnapshot({ live: false });
-  const { apiKey } = useAuth();
   const api = useDashboardApi();
   const refresh = useWorkspaceRefresh();
   const [editing, setEditing] = useState<ContentIdentity | "new" | null>(null);
   const save = useMutation({
     mutationFn: (payload: SaveIdentityPayload) =>
-      editing === "new"
-        ? api.createIdentity(apiKey, payload)
-        : api.updateIdentity(apiKey, editing!.id, payload),
+      editing === "new" ? api.createIdentity(payload) : api.updateIdentity(editing!.id, payload),
     onSuccess: () => {
       setEditing(null);
       refresh();
     },
   });
   const remove = useMutation({
-    mutationFn: (id: string) => api.deleteIdentity(apiKey, id),
+    mutationFn: (id: string) => api.deleteIdentity(id),
     onSuccess: refresh,
   });
   const identities = workspace?.identities ?? [];
   return (
-    <StudioPage>
+    <PageGrid>
       <EntityList
         title="身份列表"
         description="一个内容身份可以通过不同发布目标连接到多个渠道账号。"
@@ -62,7 +61,7 @@ export function IdentitiesPage() {
             description={`${identity.positioning} · 面向 ${identity.audience} · ${identity.tone}`}
             status={identity.enabled ? "ready" : "disabled"}
             onEdit={() => setEditing(identity)}
-            onDelete={() => confirm(`删除“${identity.name}”？`) && remove.mutate(identity.id)}
+            onDelete={() => confirm(`删除"${identity.name}"？`) && remove.mutate(identity.id)}
           />
         ))}
       </EntityList>
@@ -74,7 +73,7 @@ export function IdentitiesPage() {
         saving={save.isPending}
         error={save.error}
       />
-    </StudioPage>
+    </PageGrid>
   );
 }
 

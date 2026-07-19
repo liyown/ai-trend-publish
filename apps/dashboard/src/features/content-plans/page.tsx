@@ -1,25 +1,24 @@
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
-import { useAuth } from "../../app/auth.tsx";
 import { useDashboardApi } from "../../app/providers.tsx";
 import { useWorkspaceRefresh, useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
 import { Button } from "#components/ui/button.tsx";
-import { EntityList, EntityRow, StudioPage } from "./common.tsx";
+import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
+import { PageGrid } from "#components/product/page-grid.tsx";
 
 export function ContentPlansPage() {
   const { data: workspace } = useWorkspaceSnapshot({ live: false });
-  const { apiKey } = useAuth();
   const api = useDashboardApi();
   const refresh = useWorkspaceRefresh();
   const navigate = useNavigate();
   const remove = useMutation({
-    mutationFn: (id: string) => api.deleteContentPlan(apiKey, id),
+    mutationFn: (id: string) => api.deleteContentPlan(id),
     onSuccess: refresh,
   });
   const plans = workspace?.contentPlans ?? [];
   return (
-    <StudioPage>
+    <PageGrid>
       <EntityList
         title="内容方案"
         description="一个方案完整描述一次内容生产：使用谁的身份、参考什么、如何生成，以及生成后去哪里。"
@@ -49,11 +48,11 @@ export function ContentPlansPage() {
               onEdit={() =>
                 navigate({ to: "/content-plans/$planId/edit", params: { planId: plan.id } })
               }
-              onDelete={() => confirm(`删除“${plan.name}”？`) && remove.mutate(plan.id)}
+              onDelete={() => confirm(`删除"${plan.name}"？`) && remove.mutate(plan.id)}
             />
           );
         })}
       </EntityList>
-    </StudioPage>
+    </PageGrid>
   );
 }

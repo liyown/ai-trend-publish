@@ -3,24 +3,13 @@ import { useMutation } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { Bug, ScrollText, Settings2 } from "lucide-react";
 import type { SaveContentPlanPayload } from "#platform/api/types.ts";
-import { useAuth } from "../../app/auth.tsx";
 import { useDashboardApi } from "../../app/providers.tsx";
 import { useWorkspaceRefresh, useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
 import { Button } from "#components/ui/button.tsx";
 import { Tabs } from "#components/ui/tabs.tsx";
-import {
-  capabilityConnections,
-  ConfigView,
-  type SectionId,
-} from "./content-plan-editor/config-view.tsx";
-import {
-  ContentPlanDebugView,
-  PlanRunHistoryView,
-} from "./content-plan-editor/plan-runtime-views.tsx";
-import {
-  applyChannelRequirements,
-  requiresWeixinCover,
-} from "./content-plan-editor/requirements.ts";
+import { capabilityConnections, ConfigView, type SectionId } from "./editor/config-view.tsx";
+import { ContentPlanDebugView, PlanRunHistoryView } from "./editor/plan-runtime-views.tsx";
+import { applyChannelRequirements, requiresWeixinCover } from "./editor/requirements.ts";
 
 type EditorView = "config" | "debug" | "runs";
 
@@ -42,7 +31,6 @@ export function ContentPlanEditorPage() {
   const params = useParams({ strict: false }) as { planId?: string };
   const planId = params.planId;
   const { data: workspace } = useWorkspaceSnapshot({ live: false });
-  const { apiKey } = useAuth();
   const api = useDashboardApi();
   const refresh = useWorkspaceRefresh();
   const navigate = useNavigate();
@@ -97,8 +85,7 @@ export function ContentPlanEditorPage() {
     setValidationError(null);
   };
   const save = useMutation({
-    mutationFn: () =>
-      planId ? api.updateContentPlan(apiKey, planId, form) : api.createContentPlan(apiKey, form),
+    mutationFn: () => (planId ? api.updateContentPlan(planId, form) : api.createContentPlan(form)),
     onSuccess: () => {
       refresh();
       setDirty(false);

@@ -3,7 +3,9 @@ import { ListTodo } from "lucide-react";
 import { useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
 import { Button } from "#components/ui/button.tsx";
 import { Badge } from "#components/ui/badge.tsx";
-import { EntityList, EntityRow, FormError, StudioPage } from "./common.tsx";
+import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
+import { FormError } from "#components/product/form-error.tsx";
+import { PageGrid } from "#components/product/page-grid.tsx";
 
 export function WorkspacePage() {
   const { data: workspace, isLoading, error } = useWorkspaceSnapshot();
@@ -11,7 +13,7 @@ export function WorkspacePage() {
   if (error || !workspace) return <FormError error={error ?? new Error("工作台不可用")} />;
 
   return (
-    <StudioPage>
+    <PageGrid>
       <EntityList
         title="最近运行"
         description="查看自动化任务、内容生成和发布的最近执行结果。"
@@ -49,6 +51,6 @@ export function WorkspacePage() {
           />
         ))}
       </EntityList>
-    </StudioPage>
+    </PageGrid>
   );
 }

@@ -12,7 +12,7 @@ import { Textarea } from "#components/ui/textarea.tsx";
 import { NativeSelect } from "#components/ui/select.tsx";
 import { FormField } from "#components/product/form-field.tsx";
 import { EmptyState } from "#components/product/empty-state.tsx";
-import { splitLines } from "../common.tsx";
+import { splitLines } from "#lib/utils.ts";
 
 export function PluginSettings({
   pluginId,
@@ -39,7 +39,7 @@ export function PluginSettings({
       <EmptyState
         className="min-h-64 border-y border-[var(--border)]"
         title="还没有添加插件"
-        description="从左侧“添加插件”选择需要的处理能力；内容方案也可以不使用插件。"
+        description="从左侧「添加插件」选择需要的处理能力；内容方案也可以不使用插件。"
       />
     );
 

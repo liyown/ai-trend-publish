@@ -2,40 +2,40 @@ import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { FileText, Plus, Upload } from "lucide-react";
 import type { KnowledgeBase, SaveKnowledgeBasePayload } from "#platform/api/types.ts";
-import { useAuth } from "../../app/auth.tsx";
 import { useDashboardApi } from "../../app/providers.tsx";
 import { useWorkspaceRefresh, useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
 import { Button } from "#components/ui/button.tsx";
 import { Input } from "#components/ui/input.tsx";
 import { AppDialog, AppDialogFooter } from "#components/product/app-dialog.tsx";
 import { FormField } from "#components/product/form-field.tsx";
-import { EntityList, EntityRow, FormError, StudioPage } from "./common.tsx";
+import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
+import { FormError } from "#components/product/form-error.tsx";
+import { PageGrid } from "#components/product/page-grid.tsx";
 
 const blank: SaveKnowledgeBasePayload = { name: "", enabled: true, documents: [] };
 
 export function KnowledgePage() {
   const { data: workspace } = useWorkspaceSnapshot({ live: false });
-  const { apiKey } = useAuth();
   const api = useDashboardApi();
   const refresh = useWorkspaceRefresh();
   const [editing, setEditing] = useState<KnowledgeBase | "new" | null>(null);
   const save = useMutation({
     mutationFn: (body: SaveKnowledgeBasePayload) =>
       editing === "new"
-        ? api.createKnowledgeBase(apiKey, body)
-        : api.updateKnowledgeBase(apiKey, editing!.id, body),
+        ? api.createKnowledgeBase(body)
+        : api.updateKnowledgeBase(editing!.id, body),
     onSuccess: () => {
       setEditing(null);
       refresh();
     },
   });
   const remove = useMutation({
-    mutationFn: (id: string) => api.deleteKnowledgeBase(apiKey, id),
+    mutationFn: (id: string) => api.deleteKnowledgeBase(id),
     onSuccess: refresh,
   });
   const items = workspace?.knowledgeBases ?? [];
   return (
-    <StudioPage>
+    <PageGrid>
       <EntityList
         title="知识库"
         description="维护可重复使用的参考材料；抓取数据源只负责运行时获取动态内容。"
@@ -54,7 +54,7 @@ export function KnowledgePage() {
             description={`${item.documents.length} 份参考文档`}
             status={item.enabled ? "ready" : "disabled"}
             onEdit={() => setEditing(item)}
-            onDelete={() => confirm(`删除“${item.name}”？`) && remove.mutate(item.id)}
+            onDelete={() => confirm(`删除"${item.name}"？`) && remove.mutate(item.id)}
           />
         ))}
       </EntityList>
@@ -66,7 +66,7 @@ export function KnowledgePage() {
         saving={save.isPending}
         error={save.error}
       />
-    </StudioPage>
+    </PageGrid>
   );
 }
 

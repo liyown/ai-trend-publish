@@ -1,29 +1,41 @@
-FROM denoland/deno:2.7.14
+FROM node:24-slim
 
 WORKDIR /app
 
-ENV DENO_DIR=/deno-dir
 ENV TRENDPUBLISH_RUNTIME=docker
 ENV TRENDPUBLISH_CONFIG=/app/config/trendpublish.config.ts
+ENV PATH=/app/node_modules/.bin:$PATH
 
-COPY deno.json deno.lock ./
-COPY dashboard ./dashboard
-COPY src ./src
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/dashboard/package.json ./apps/dashboard/package.json
+COPY apps/server/package.json ./apps/server/package.json
+COPY packages/article/package.json ./packages/article/package.json
+COPY packages/connectors/package.json ./packages/connectors/package.json
+COPY packages/core/package.json ./packages/core/package.json
+COPY packages/ops/package.json ./packages/ops/package.json
+COPY packages/publishing/package.json ./packages/publishing/package.json
+COPY packages/runtime/package.json ./packages/runtime/package.json
+
+RUN npm install -g vite-plus@0.1.24 \
+  && vp install --frozen-lockfile
+
+COPY apps ./apps
+COPY packages ./packages
+COPY tests ./tests
 COPY scripts ./scripts
 COPY migrations ./migrations
 COPY trendpublish.config.example.ts ./trendpublish.config.example.ts
 COPY trendpublish.config.docker.example.ts ./trendpublish.config.docker.example.ts
 COPY trendpublish.config.cloudflare.ts ./trendpublish.config.cloudflare.ts
 COPY wrangler.jsonc ./wrangler.jsonc
+COPY tsconfig.json vite.config.ts vitest.config.ts ./
 
-RUN deno run --config dashboard/deno.json -A npm:vite@8.0.13 build --config dashboard/vite.config.ts
-RUN deno cache src/index.ts src/apps/weixin-relay/server.ts scripts/run.workflow.ts scripts/doctor.ts scripts/preview.weixin.ts
-RUN mkdir -p /app/config /app/src/temp \
-  && ln -s /app/src /app/config/src \
-  && chown -R deno:deno /app /deno-dir
+RUN vp run @trendpublish/dashboard#build
+RUN mkdir -p /app/config /app/data \
+  && chown -R node:node /app
 
-USER deno
+USER node
 
 EXPOSE 8000
 
-CMD ["deno", "task", "dev"]
+CMD ["vp", "run", "@trendpublish/server#start"]

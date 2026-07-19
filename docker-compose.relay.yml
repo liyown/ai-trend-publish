@@ -3,7 +3,7 @@ services:
     image: ghcr.io/liyown/ai-trend-publish:latest
     container_name: trendpublish-weixin-relay
     restart: unless-stopped
-    command: ["deno", "task", "relay"]
+    command: ["vp", "run", "relay"]
     ports:
       - "8080:8080"
     environment:

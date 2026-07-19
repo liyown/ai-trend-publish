@@ -8,6 +8,8 @@ import {
   ArticleApplication,
   AutomationApplication,
   PublishingApplication,
+  InProcessBackgroundTasks,
+  WorkspaceContentPlanResolver,
 } from "@trendpublish/core/application";
 import {
   ChannelAdapterRegistry,
@@ -17,8 +19,6 @@ import {
 } from "@trendpublish/publishing";
 import { EventedJobStore, RuntimeEventHub } from "@trendpublish/runtime";
 import { connectorEventObserver, type ApplicationRuntime } from "./runtime.ts";
-import { InProcessBackgroundTasks } from "./background-tasks.ts";
-import { WorkspaceContentPlanResolver } from "./content-plan-resolver.ts";
 import {
   D1ConnectionStore,
   D1CredentialStore,

@@ -20,7 +20,7 @@ import {
   startJob,
 } from "@trendpublish/runtime";
 import { createHttpApp } from "./app.ts";
-import { InProcessBackgroundTasks } from "../application/background-tasks.ts";
+import { InProcessBackgroundTasks } from "@trendpublish/core/application";
 import type { ApplicationRuntime } from "../application/runtime.ts";
 import type { AppVariables, HttpDeps } from "./deps.ts";
 

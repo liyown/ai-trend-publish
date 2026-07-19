@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@trendpublish/article": "workspace:*",
+    "@trendpublish/connectors": "workspace:*",
     "@trendpublish/contracts": "workspace:*",
     "@trendpublish/publishing": "workspace:*",
     "@trendpublish/runtime": "workspace:*"

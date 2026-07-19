@@ -8,6 +8,10 @@ import {
   ArticleApplication,
   AutomationApplication,
   PublishingApplication,
+  InProcessBackgroundTasks,
+  recoverBackgroundJobs,
+  WorkspaceContentPlanResolver,
+  type BackgroundTasks,
 } from "@trendpublish/core/application";
 import type { WorkspaceRepository } from "@trendpublish/core/workspace";
 import { JobType } from "@trendpublish/contracts";
@@ -24,12 +28,6 @@ import {
   type RuntimeEventSource,
   type TaskStore,
 } from "@trendpublish/runtime";
-import { WorkspaceContentPlanResolver } from "./content-plan-resolver.ts";
-import {
-  InProcessBackgroundTasks,
-  recoverBackgroundJobs,
-  type BackgroundTasks,
-} from "./background-tasks.ts";
 import {
   SQLiteStateStore,
   asConnectionStore,

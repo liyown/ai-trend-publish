@@ -1,3 +1,4 @@
+export * from "./background-tasks.ts";
 export * from "./constants.ts";
 export * from "./events.ts";
 export * from "./memory-task-store.ts";

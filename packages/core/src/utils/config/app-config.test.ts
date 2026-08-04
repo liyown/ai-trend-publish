@@ -2,6 +2,9 @@ import { test, afterEach } from "vite-plus/test";
 import { assertEquals } from "../../test/assert.ts";
 import { initializeAppConfig } from "./app-config.ts";
 
+const testEnv = (globalThis as unknown as { process: { env: Record<string, string | undefined> } })
+  .process.env;
+
 // 每条用例后清理注入的 env，避免测试间污染
 afterEach(() => {
   for (const key of [
@@ -11,14 +14,14 @@ afterEach(() => {
     "TRENDPUBLISH_ENV",
     "OTEL_ENABLED",
   ]) {
-    delete process.env[key];
+    delete testEnv[key];
   }
 });
 
 test("initializeAppConfig reads config from process.env", () => {
-  process.env.TRENDPUBLISH_API_KEY = "server-key";
-  process.env.TRENDPUBLISH_PORT = "9000";
-  process.env.TRENDPUBLISH_SQLITE_PATH = "data/test.sqlite3";
+  testEnv.TRENDPUBLISH_API_KEY = "server-key";
+  testEnv.TRENDPUBLISH_PORT = "9000";
+  testEnv.TRENDPUBLISH_SQLITE_PATH = "data/test.sqlite3";
 
   const config = initializeAppConfig({ envFile: false });
 

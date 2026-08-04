@@ -10,7 +10,7 @@ import {
 import { assertEquals } from "../test/assert.ts";
 import { createWorkspaceEntity, type ContentPlan, type Automation } from "../workspace/domain.ts";
 import { MemoryWorkspaceRepository } from "../workspace/repository.ts";
-import type { ArticleApplication } from "./article-application.ts";
+import type { ArticleApplication } from "@trendpublish/article/application";
 import { AutomationApplication } from "./automation-application.ts";
 import type { PublishingApplication } from "./publishing-application.ts";
 
@@ -38,7 +38,9 @@ test("automation run generates content and publishes configured targets", async 
       sourceCollectionIds: [],
       plugins: [],
       connections: { chat: "chat-main" },
-      publishing: { mode: "publish", targetIds: ["target-weixin"] },
+      publishing: {
+        destinations: [{ accountId: "account-weixin", publicationType: "article" }],
+      },
     } satisfies Omit<ContentPlan, "revision" | "createdAt" | "updatedAt">,
     now(),
   );
@@ -87,7 +89,18 @@ test("automation run generates content and publishes configured targets", async 
   assertEquals(result.output?.articleJobId, articleJob.id);
   assertEquals(result.output?.publicationJobId, publicationJob.id);
   assertEquals(articleInputs.length, 1);
-  assertEquals(publishInputs, [{ packageId: "package-1", targetIds: ["target-weixin"] }]);
+  assertEquals(publishInputs, [
+    {
+      packageId: "package-1",
+      destinations: [{ accountId: "account-weixin", publicationType: "article" }],
+    },
+  ]);
+
+  const manualResult = await application.run({ contentPlanId: plan.id });
+  assertEquals(manualResult.status, "succeeded");
+  assertEquals(manualResult.output?.automationId, undefined);
+  assertEquals(articleInputs.length, 2);
+  assertEquals(publishInputs.length, 2);
 });
 
 test("disabled automation stops before generating content", async () => {
@@ -110,58 +123,6 @@ test("disabled automation stops before generating content", async () => {
 
   assertEquals(result.status, "failed");
   assertEquals(result.error, "自动化任务不存在或已停用");
-});
-
-test("automation treats no content as a successful skip and never starts publication", async () => {
-  const automation = createWorkspaceEntity({
-    id: "automation-quiet-day",
-    name: "每日资讯",
-    enabled: true,
-    contentPlanId: "plan-quiet-day",
-    keywords: [],
-    trigger: { type: "manual" },
-  } satisfies Omit<Automation, "revision" | "createdAt" | "updatedAt">);
-  const plan = createWorkspaceEntity({
-    id: "plan-quiet-day",
-    name: "每日资讯方案",
-    enabled: true,
-    identityId: "identity-ai",
-    knowledgeBaseIds: [],
-    sourceCollectionIds: [],
-    plugins: [],
-    connections: { chat: "chat-main" },
-    publishing: { mode: "publish", targetIds: ["target-weixin"] },
-  } satisfies Omit<ContentPlan, "revision" | "createdAt" | "updatedAt">);
-  const now = () => new Date("2026-07-18T08:00:00.000Z");
-  const articleJob = finishJob(
-    startJob(createJob("article.generate", { planId: plan.id }, now()), now()),
-    "succeeded",
-    { output: { resultKind: "no-content" as const, reason: "没有值得发布的变化" } },
-    now(),
-  );
-  let published = false;
-  const application = new AutomationApplication({
-    workspace: new MemoryWorkspaceRepository({ automations: [automation], contentPlans: [plan] }),
-    jobs: new MemoryJobStore(),
-    now,
-    articles: {
-      createGenerateJob: () => Promise.resolve(articleJob),
-      resume: () => Promise.resolve(articleJob),
-    } as unknown as ArticleApplication,
-    publishing: {
-      createPublishJob: () => {
-        published = true;
-        throw new Error("should not publish");
-      },
-    } as unknown as PublishingApplication,
-  });
-
-  const result = await application.run({ automationId: automation.id });
-
-  assertEquals(result.status, "succeeded");
-  assertEquals(result.output?.articleResultKind, "no-content");
-  assertEquals(result.output?.noContentReason, "没有值得发布的变化");
-  assertEquals(published, false);
 });
 
 test("automation forwards child activity to its outer job without losing or retaining subscriptions", async () => {
@@ -187,7 +148,9 @@ test("automation forwards child activity to its outer job without losing or reta
       sourceCollectionIds: [],
       plugins: [],
       connections: { chat: "chat-main" },
-      publishing: { mode: "publish", targetIds: ["target-weixin"] },
+      publishing: {
+        destinations: [{ accountId: "account-weixin", publicationType: "article" }],
+      },
     } satisfies Omit<ContentPlan, "revision" | "createdAt" | "updatedAt">,
     now(),
   );
@@ -410,7 +373,9 @@ function recoverableAutomationScenario(
       sourceCollectionIds: [],
       plugins: [],
       connections: { chat: "chat-main" },
-      publishing: { mode: "publish", targetIds: ["target-weixin"] },
+      publishing: {
+        destinations: [{ accountId: "account-weixin", publicationType: "article" }],
+      },
     } satisfies Omit<ContentPlan, "revision" | "createdAt" | "updatedAt">,
     now(),
   );

@@ -1,4 +1,4 @@
-import { ArticleResultKind, JobType, WorkspaceKind } from "@trendpublish/contracts";
+import { JobType, WorkspaceKind } from "@trendpublish/contracts";
 import {
   createJob,
   describeUnknown,
@@ -16,7 +16,8 @@ import type {
   ArticleApplication,
   ArticleJobOutput,
   GenerateArticleInput,
-} from "./article-application.ts";
+} from "@trendpublish/article/application";
+import type { ArticleMetadataValue } from "@trendpublish/article";
 import type {
   PublishingApplication,
   PublishContentInput,
@@ -25,17 +26,18 @@ import type {
 import type { WorkspaceRepository } from "../workspace/repository.ts";
 
 export interface RunAutomationInput {
-  automationId: string;
+  automationId?: string;
+  /** Internal manual-run entrypoint; public automation requests continue to use automationId. */
+  contentPlanId?: string;
   requestedTopic?: string;
+  metadata?: Record<string, ArticleMetadataValue>;
 }
 
 export interface AutomationRunOutput {
-  automationId: string;
+  automationId?: string;
   articleJobId: string;
   articleResultKind: ArticleJobOutput["resultKind"];
   packageId?: string;
-  reviewRequestId?: string;
-  noContentReason?: string;
   publicationJobId?: string;
 }
 
@@ -70,9 +72,12 @@ export class AutomationApplication {
 
   createRunJob(
     input: RunAutomationInput,
+    options: { runId?: string } = {},
   ): Promise<JobRecord<RunAutomationInput, AutomationRunOutput>> {
     return this.options.jobs.create(
-      createJob<RunAutomationInput, AutomationRunOutput>(JobType.RunAutomation, input, this.now()),
+      createJob<RunAutomationInput, AutomationRunOutput>(JobType.RunAutomation, input, this.now(), {
+        runId: options.runId,
+      }),
     );
   }
 
@@ -105,65 +110,68 @@ export class AutomationApplication {
     const input = job.input;
     let running = job;
     try {
-      const automation = await this.options.workspace.get(
-        WorkspaceKind.Automation,
-        input.automationId,
-      );
-      if (!automation || !automation.enabled) throw new Error("自动化任务不存在或已停用");
-      const plan = await this.options.workspace.get(
-        WorkspaceKind.ContentPlan,
-        automation.contentPlanId,
-      );
-      if (!plan || !plan.enabled) throw new Error("自动化任务绑定的内容方案不存在或已停用");
+      const automation = input.automationId
+        ? await this.options.workspace.get(WorkspaceKind.Automation, input.automationId)
+        : undefined;
+      if (input.automationId && (!automation || !automation.enabled)) {
+        throw new Error("自动化任务不存在或已停用");
+      }
+      const contentPlanId = automation?.contentPlanId ?? input.contentPlanId;
+      if (!contentPlanId) throw new Error("运行没有绑定内容方案");
+      const plan = await this.options.workspace.get(WorkspaceKind.ContentPlan, contentPlanId);
+      if (!plan || !plan.enabled) throw new Error("内容方案不存在或已停用");
 
       const articleInput: GenerateArticleInput = {
-        planId: automation.contentPlanId,
+        planId: contentPlanId,
         requestedTopic: input.requestedTopic,
         metadata: {
-          automationId: automation.id,
-          instructions: automation.instructions,
-          keywords: automation.keywords,
+          ...input.metadata,
+          ...(automation
+            ? {
+                automationId: automation.id,
+                instructions: automation.instructions,
+                keywords: automation.keywords,
+              }
+            : {}),
         },
       };
       const preparedArticle = await this.prepareChildJob<GenerateArticleInput, ArticleJobOutput>(
         running,
         "articleJobId",
         JobType.GenerateArticle,
-        (jobId) => this.options.articles.createGenerateJob(articleInput, { jobId }),
+        (jobId) =>
+          this.options.articles.createGenerateJob(articleInput, {
+            jobId,
+            runId: running.runId,
+            sessionId: running.runId ? `${running.runId}:main` : undefined,
+            parentJobId: running.id,
+          }),
       );
       running = preparedArticle.outerJob;
       const articleJob = preparedArticle.childJob;
       const completedArticleJob = await this.runChildJob(running, articleJob, "article", () =>
         this.options.articles.resume(articleJob.id),
       );
-      const output = automationOutputFromArticle(automation.id, completedArticleJob);
+      const output = automationOutputFromArticle(automation?.id, completedArticleJob);
       if (completedArticleJob.status !== JobStatus.Succeeded) {
         return await this.finishFromChild(running, completedArticleJob, "内容生成", output);
       }
       if (!output || !completedArticleJob.output) throw new Error("内容生成未返回有效结果");
-      if (output.articleResultKind === ArticleResultKind.NoContent) {
-        return await this.options.jobs.update(
-          finishJob(running, JobStatus.Succeeded, { output }, this.now()),
-        );
-      }
-      if (output.articleResultKind === ArticleResultKind.ReviewRequest) {
-        return await this.options.jobs.update(
-          finishJob(running, JobStatus.Succeeded, { output }, this.now()),
-        );
-      }
-
       if (!output.packageId) throw new Error("内容生成未返回内容包");
-      if (plan.publishing?.mode === "publish") {
-        if (!plan.publishing.targetIds.length) throw new Error("内容方案没有配置发布目标");
+      if (plan.publishing.destinations.length) {
         const publicationInput: PublishContentInput = {
           packageId: output.packageId,
-          targetIds: plan.publishing.targetIds,
+          destinations: plan.publishing.destinations,
         };
         const preparedPublication = await this.prepareChildJob<
           PublishContentInput,
           PublishJobOutput
         >(running, "publicationJobId", JobType.PublishContent, (jobId) =>
-          this.options.publishing.createPublishJob(publicationInput, { jobId }),
+          this.options.publishing.createPublishJob(publicationInput, {
+            jobId,
+            runId: running.runId,
+            parentJobId: running.id,
+          }),
         );
         running = preparedPublication.outerJob;
         const publicationJob = preparedPublication.childJob;
@@ -370,23 +378,17 @@ function automationChildJobId(
 }
 
 function automationOutputFromArticle(
-  automationId: string,
+  automationId: string | undefined,
   articleJob: JobRecord<unknown, ArticleJobOutput>,
 ): AutomationRunOutput | undefined {
   const article = articleJob.output;
   if (!article) return undefined;
   const output: AutomationRunOutput = {
-    automationId,
+    ...(automationId ? { automationId } : {}),
     articleJobId: articleJob.id,
     articleResultKind: article.resultKind,
   };
-  if (article.resultKind === ArticleResultKind.NoContent) {
-    output.noContentReason = article.reason;
-  } else if (article.resultKind === ArticleResultKind.ReviewRequest) {
-    output.reviewRequestId = article.artifactId;
-  } else {
-    output.packageId = article.artifactId;
-  }
+  output.packageId = article.artifactId;
   return output;
 }
 

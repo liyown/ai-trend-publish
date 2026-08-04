@@ -14,7 +14,7 @@
   },
   "scripts": {
     "check": "vp check",
-    "test": "vp test"
+    "test": "vp test --root ../.. packages/core/src"
   },
   "dependencies": {
     "@trendpublish/article": "workspace:*",
@@ -22,5 +22,8 @@
     "@trendpublish/contracts": "workspace:*",
     "@trendpublish/publishing": "workspace:*",
     "@trendpublish/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2"
   }
 }

@@ -1,11 +1,15 @@
-import { WorkspaceKind, type WorkspaceKind as WorkspaceKindValue } from "@trendpublish/contracts";
+import {
+  WorkspaceKind,
+  type JsonObject,
+  type WorkspaceEntity,
+  type WorkspaceKind as WorkspaceKindValue,
+} from "@trendpublish/contracts";
 import type {
   Automation,
   ContentPlan,
   ChannelAccount,
   ContentIdentity,
   KnowledgeBase,
-  PublishTarget,
   SourceCollection,
   StoredContentPackage,
   StoredReviewRequest,
@@ -13,7 +17,27 @@ import type {
   WorkspaceDataSnapshot,
 } from "./domain.ts";
 
-export type WorkspaceDocumentKind = WorkspaceKindValue;
+export const LegacyWorkspaceKind = {
+  PublishTarget: "publish-target",
+  Migration: "internal-migration",
+} as const;
+
+export interface LegacyPublishTarget extends WorkspaceEntity {
+  name: string;
+  channelAccountId: string;
+  publicationType?: string;
+  settings: JsonObject;
+}
+
+export interface InternalMigrationRecord extends WorkspaceEntity {
+  version: string;
+  completedAt: string;
+}
+
+export type WorkspaceDocumentKind =
+  | WorkspaceKindValue
+  | typeof LegacyWorkspaceKind.PublishTarget
+  | typeof LegacyWorkspaceKind.Migration;
 
 export interface WorkspaceDocumentMap {
   [WorkspaceKind.Automation]: Automation;
@@ -22,7 +46,8 @@ export interface WorkspaceDocumentMap {
   [WorkspaceKind.SourceCollection]: SourceCollection;
   [WorkspaceKind.ContentPlan]: ContentPlan;
   [WorkspaceKind.ChannelAccount]: ChannelAccount;
-  [WorkspaceKind.PublishTarget]: PublishTarget;
+  [LegacyWorkspaceKind.PublishTarget]: LegacyPublishTarget;
+  [LegacyWorkspaceKind.Migration]: InternalMigrationRecord;
   [WorkspaceKind.ContentPackage]: StoredContentPackage;
   [WorkspaceKind.ReviewRequest]: StoredReviewRequest;
   [WorkspaceKind.Publication]: StoredPublication;
@@ -52,7 +77,6 @@ export async function loadWorkspaceSnapshot(
     sourceCollections,
     contentPlans,
     channelAccounts,
-    publishTargets,
     contentPackages,
     reviewRequests,
     publications,
@@ -63,7 +87,6 @@ export async function loadWorkspaceSnapshot(
     repository.list(WorkspaceKind.SourceCollection),
     repository.list(WorkspaceKind.ContentPlan),
     repository.list(WorkspaceKind.ChannelAccount),
-    repository.list(WorkspaceKind.PublishTarget),
     repository.list(WorkspaceKind.ContentPackage),
     repository.list(WorkspaceKind.ReviewRequest),
     repository.list(WorkspaceKind.Publication),
@@ -75,7 +98,6 @@ export async function loadWorkspaceSnapshot(
     sourceCollections,
     contentPlans,
     channelAccounts,
-    publishTargets,
     contentPackages,
     reviewRequests,
     publications,
@@ -93,7 +115,6 @@ export class MemoryWorkspaceRepository implements WorkspaceRepository {
       [WorkspaceKind.SourceCollection, initial.sourceCollections],
       [WorkspaceKind.ContentPlan, initial.contentPlans],
       [WorkspaceKind.ChannelAccount, initial.channelAccounts],
-      [WorkspaceKind.PublishTarget, initial.publishTargets],
       [WorkspaceKind.ContentPackage, initial.contentPackages],
       [WorkspaceKind.ReviewRequest, initial.reviewRequests],
       [WorkspaceKind.Publication, initial.publications],

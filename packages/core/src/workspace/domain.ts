@@ -9,7 +9,7 @@ export type {
   ContentPlan,
   KnowledgeBase,
   KnowledgeDocument,
-  PublishTarget,
+  PublicationDestinationSelection,
   SourceCollection,
   SourceItem,
   StoredContentPackage,

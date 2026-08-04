@@ -1,5 +1,4 @@
-import { equal } from "node:assert/strict";
-import { test } from "vite-plus/test";
+import { expect, test } from "vite-plus/test";
 import { MemoryJobStore, createJob, finishJob, startJob } from "@trendpublish/runtime";
 import { InProcessBackgroundTasks, recoverBackgroundJobs } from "./background-tasks.ts";
 
@@ -12,9 +11,9 @@ test("in-process background tasks return immediately and can be drained", async 
     completed = true;
   });
 
-  equal(completed, false);
+  expect(completed).toBe(false);
   await runner.waitForIdle();
-  equal(completed, true);
+  expect(completed).toBe(true);
 });
 
 test("local startup resumes queued jobs and reconciles orphaned running jobs", async () => {
@@ -47,11 +46,10 @@ test("local startup resumes queued jobs and reconciles orphaned running jobs", a
   });
   await runner.waitForIdle();
 
-  equal(resumed[0], queued.id);
-  equal((await jobs.get(queued.id))?.status, "succeeded");
-  equal((await jobs.get(orphaned.id))?.status, "needs_attention");
-  equal(
-    (await jobs.get(orphaned.id))?.error,
+  expect(resumed[0]).toBe(queued.id);
+  expect((await jobs.get(queued.id))?.status).toBe("succeeded");
+  expect((await jobs.get(orphaned.id))?.status).toBe("needs_attention");
+  expect((await jobs.get(orphaned.id))?.error).toBe(
     "本地服务在任务执行期间重启，已停止自动续跑；请确认外部副作用后手动恢复",
   );
 });

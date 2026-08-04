@@ -1,8 +1,8 @@
-import type { ArticlePluginCapability, ContentPackage, ReviewRequest } from "./article.ts";
+import type { ContentPackage, ReviewRequest } from "./article.ts";
 import type { PublicConnection, PublicConnectorDefinition } from "./connectors.ts";
-import type { JobRecord } from "./execution.ts";
+import type { JobRecord, RunRecord } from "./execution.ts";
 import type { JsonValue } from "./json.ts";
-import type { PublicationBatchResult } from "./publishing.ts";
+import type { PublicationBatchResult, PublicationTypeProfileDefinition } from "./publishing.ts";
 
 type ValueOf<T> = T[keyof T];
 
@@ -13,7 +13,6 @@ export const WorkspaceKind = {
   SourceCollection: "source-collection",
   ContentPlan: "content-plan",
   ChannelAccount: "channel-account",
-  PublishTarget: "publish-target",
   ContentPackage: "content-package",
   ReviewRequest: "review-request",
   Publication: "publication",
@@ -68,6 +67,16 @@ export interface SourceCollection extends WorkspaceEntity {
   sources: SourceItem[];
 }
 
+export const ContentPlanTemplateId = {
+  DailyBrief: "daily-brief",
+  DeepAnalysis: "deep-analysis",
+  PracticalGuide: "practical-guide",
+} as const;
+export type ContentPlanTemplateId = ValueOf<typeof ContentPlanTemplateId>;
+
+export const DefaultContentPlanTemplateId = ContentPlanTemplateId.DailyBrief;
+
+/** @deprecated Persisted only for reading older plans; template pipelines ignore this field. */
 export interface ArticlePluginSelection {
   pluginId: string;
   enabled: boolean;
@@ -77,26 +86,44 @@ export interface ArticlePluginSelection {
 export interface ContentPlan extends WorkspaceEntity {
   name: string;
   enabled: boolean;
+  /** Selects a built-in, versioned article pipeline. Internal plugins are not user configuration. */
+  templateId?: ContentPlanTemplateId;
   identityId: string;
   knowledgeBaseIds: string[];
   sourceCollectionIds: string[];
-  plugins: ArticlePluginSelection[];
+  /** @deprecated Internal orchestration is owned by templateId. */
+  plugins?: ArticlePluginSelection[];
   connections: Record<string, string>;
   researchConnections?: { search: string[]; fetch: string[] };
-  publishing: { mode: "content_only" | "publish"; targetIds: string[] };
+  agent?: {
+    modelConnectionId: string;
+    strategyId: ContentPlanTemplateId;
+    toolConnectionIds: string[];
+    enhancementToolIds: string[];
+    budget?: { maxTurns?: number };
+  };
+  publishing: { destinations: PublicationDestinationSelection[] };
 }
 
 export interface ChannelAccount extends WorkspaceEntity {
   name: string;
+  enabled: boolean;
   channel: string;
+  /** Internal managed connection. Dashboard account flows do not ask users to manage it. */
   connectionId: string;
   settings: Record<string, WorkspaceJson>;
+  connectorId?: string;
+  credentialState?: Record<string, boolean>;
+  /** Generic connector references used only by this account's channel publication ReAct. */
+  publisher?: {
+    toolConnectionIds: string[];
+  };
 }
 
-export interface PublishTarget extends WorkspaceEntity {
-  name: string;
-  channelAccountId: string;
-  settings: Record<string, WorkspaceJson>;
+export interface PublicationDestinationSelection {
+  accountId: string;
+  publicationType: string;
+  options?: Record<string, WorkspaceJson>;
 }
 
 export type AutomationTrigger =
@@ -118,6 +145,13 @@ export interface StoredContentPackage extends WorkspaceEntity {
   jobId: string;
   planId: string;
   contentPackage: ContentPackage;
+}
+
+/** HTTP view that resolves a content package back to its generation and publication runs. */
+export interface ContentPackageRunContext {
+  contentPackage: StoredContentPackage;
+  generationRun?: RunRecord;
+  publicationRuns: RunRecord[];
 }
 
 export interface StoredReviewRequest extends WorkspaceEntity {
@@ -142,24 +176,24 @@ export interface WorkspaceDataSnapshot {
   sourceCollections: SourceCollection[];
   contentPlans: ContentPlan[];
   channelAccounts: ChannelAccount[];
-  publishTargets: PublishTarget[];
   contentPackages: StoredContentPackage[];
   reviewRequests: StoredReviewRequest[];
   publications: StoredPublication[];
 }
 
-export interface ArticlePluginDefinition {
+export interface ContentPlanTemplateDefinition {
   id: string;
   name: string;
   description: string;
-  capabilities: ArticlePluginCapability[];
-  optional: boolean;
+  stages: string[];
 }
 
 export interface ChannelDefinition {
   id: string;
   name: string;
-  requiredCapability: string;
+  description: string;
+  connectorIds: string[];
+  defaultPublicationType: string;
 }
 
 /** Complete JSON response body nested under `workspace` in GET /api/workspace. */
@@ -169,8 +203,9 @@ export interface WorkspaceSnapshot extends WorkspaceDataSnapshot {
   jobs: JobRecord[];
   connections: PublicConnection[];
   connectorDefinitions: PublicConnectorDefinition[];
-  articleExtensions: { plugins: ArticlePluginDefinition[] };
+  contentPlanTemplates: ContentPlanTemplateDefinition[];
   channelDefinitions: ChannelDefinition[];
+  publicationTypeProfiles: PublicationTypeProfileDefinition[];
 }
 
 export type SaveIdentityPayload = Omit<ContentIdentity, keyof WorkspaceEntity> & {
@@ -197,12 +232,15 @@ export type SaveContentPlanPayload = Omit<ContentPlan, keyof WorkspaceEntity> & 
   revision?: number;
 };
 
-export type SaveChannelAccountPayload = Omit<ChannelAccount, keyof WorkspaceEntity> & {
+export type SaveChannelAccountPayload = Pick<ChannelAccount, "name" | "enabled" | "channel"> & {
   revision?: number;
-};
-
-export type SavePublishTargetPayload = Omit<PublishTarget, keyof WorkspaceEntity> & {
-  revision?: number;
+  connectorId: string;
+  settings: Record<string, WorkspaceJson>;
+  credentials?: Record<string, WorkspaceJson>;
+  clearCredentials?: string[];
+  publisher?: {
+    toolConnectionIds: string[];
+  };
 };
 
 export type SaveAutomationPayload = Omit<Automation, keyof WorkspaceEntity> & {

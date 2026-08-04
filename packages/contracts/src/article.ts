@@ -11,6 +11,7 @@ export type ArticleResultKind = ValueOf<typeof ArticleResultKind>;
 
 export const ArticleSchemaVersion = {
   ContentPackage: "content-package.v5",
+  MasterContent: "master-content.v1",
   ReviewRequest: "review-request.v2",
 } as const;
 export type ArticleSchemaVersion = ValueOf<typeof ArticleSchemaVersion>;
@@ -84,16 +85,12 @@ export type DiagnosticCode = ValueOf<typeof DiagnosticCode>;
 
 export const ArticlePluginId = {
   TitleStyle: "title-style",
-  EditorialQuality: "editorial-quality",
-  EvidenceSupplement: "evidence-supplement",
   CoverImage: "cover-image",
 } as const;
 export type ArticlePluginId = ValueOf<typeof ArticlePluginId>;
 
 export const ArticlePluginCapability = {
   Transformer: "transformer",
-  Evaluator: "evaluator",
-  EvidenceSupplementer: "evidence-supplementer",
   AssetProvider: "asset-provider",
 } as const;
 export type ArticlePluginCapability = ValueOf<typeof ArticlePluginCapability>;
@@ -422,10 +419,34 @@ export interface QualityReport {
   evaluatedAt: string;
 }
 
+export interface MasterClaim {
+  id: string;
+  statement: string;
+  evidenceIds: string[];
+}
+
+/** Channel-neutral semantic result produced by the shared ReAct session. */
+export interface MasterContent {
+  schemaVersion: typeof ArticleSchemaVersion.MasterContent;
+  topic: string;
+  angle: string;
+  synopsis: string;
+  narrativeMarkdown: string;
+  claims: MasterClaim[];
+  requestedModalities: ContentAssetMediaType[];
+  agent: {
+    strategyId: string;
+    modelConnectionId: string;
+    maxTurns: number;
+  };
+}
+
 export interface ContentPackage {
   schemaVersion: typeof ArticleSchemaVersion.ContentPackage;
   id: string;
   checksum: string;
+  /** Present on ReAct-produced packages; omitted on historical fixed-pipeline artifacts. */
+  master?: MasterContent;
   source: ArticleSource;
   document: ArticleDocument;
   evidence: EvidenceUnit[];

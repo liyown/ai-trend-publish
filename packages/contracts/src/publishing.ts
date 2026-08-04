@@ -23,6 +23,48 @@ export const PublicationBatchStatus = {
 } as const;
 export type PublicationBatchStatus = ValueOf<typeof PublicationBatchStatus>;
 
+export const ChannelVariantSchemaVersion = "channel-variant.v1" as const;
+
+export type ContentModality = "article" | "image" | "video" | "audio";
+
+/** A safe capability slot that a channel publication session may use. */
+export interface PublisherToolRequirement {
+  id: string;
+  name: string;
+  description: string;
+  capability: string;
+  required?: boolean;
+}
+
+export interface PublicationTypeProfileDefinition {
+  channel: string;
+  type: string;
+  version: string;
+  name: string;
+  description: string;
+  supportedModalities: ContentModality[];
+  requiredArtifacts: string[];
+  optionalArtifacts: string[];
+  /** Connector capabilities that can be referenced by an account's publisher configuration. */
+  publisherTools?: PublisherToolRequirement[];
+}
+
+/** Validated output of one target-specific channel adaptation ReAct session. */
+export interface ChannelVariant {
+  schemaVersion: typeof ChannelVariantSchemaVersion;
+  id: string;
+  checksum: string;
+  packageId: string;
+  packageChecksum: string;
+  destinationId: string;
+  channel: string;
+  publicationType: string;
+  profileVersion: string;
+  payload: JsonValue;
+  assetIds: string[];
+  createdAt: string;
+}
+
 export type PublicationMetadataValue = JsonValue;
 
 export interface PreparedPublicationBody {
@@ -36,6 +78,7 @@ export interface PreparedPublicationInput {
   body: PreparedPublicationBody;
   assets: ContentAsset[];
   metadata?: Record<string, PublicationMetadataValue>;
+  variant?: ChannelVariant;
 }
 
 export interface PreparedPublication extends PreparedPublicationInput {
@@ -43,8 +86,7 @@ export interface PreparedPublication extends PreparedPublicationInput {
   checksum: string;
   packageId: string;
   packageChecksum: string;
-  targetId: string;
-  targetRevision: number;
+  destinationId: string;
   accountId: string;
   accountRevision: number;
   adapterId: string;
@@ -61,8 +103,8 @@ export interface PublishReceipt {
   metadata?: Record<string, PublicationMetadataValue>;
 }
 
-export interface TargetPublicationResult {
-  targetId: string;
+export interface DestinationPublicationResult {
+  destinationId: string;
   accountId: string;
   status: PublishReceipt["status"];
   prepared?: PreparedPublication;
@@ -74,5 +116,23 @@ export interface PublicationBatchResult {
   requestId: string;
   packageId: string;
   status: PublicationBatchStatus;
-  targets: TargetPublicationResult[];
+  destinations: DestinationPublicationResult[];
+}
+
+/** Safe, on-demand view of a prepared channel payload for the Dashboard. */
+export interface ChannelPublicationPreview {
+  destinationId: string;
+  channel: string;
+  publicationType: string;
+  title: string;
+  digest: string;
+  body: PreparedPublicationBody;
+  cover?: {
+    assetId: string;
+    source: string;
+    mimeType?: string;
+    alt?: string;
+    width?: number;
+    height?: number;
+  };
 }

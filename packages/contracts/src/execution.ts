@@ -1,3 +1,5 @@
+import type { JsonObject, JsonValue } from "./json.ts";
+
 type ValueOf<T> = T[keyof T];
 
 export const JobType = {
@@ -38,6 +40,9 @@ export type TaskStatus = ValueOf<typeof TaskStatus>;
 /** Durable execution record serialized by the HTTP API. */
 export interface JobRecord<TInput = unknown, TOutput = unknown> {
   id: string;
+  runId?: string;
+  sessionId?: string;
+  parentJobId?: string;
   type: string;
   status: JobStatus;
   input: TInput;
@@ -73,5 +78,154 @@ export interface RuntimeEvent<TData = unknown> {
   occurredAt: string;
   jobId?: string;
   taskId?: string;
+  runId?: string;
+  sessionId?: string;
   data?: TData;
+}
+
+export const RunKind = {
+  Content: "content",
+  Publication: "publication",
+} as const;
+export type RunKind = ValueOf<typeof RunKind>;
+
+export const RunStatus = {
+  Queued: "queued",
+  Running: "running",
+  Succeeded: "succeeded",
+  Partial: "partial",
+  Failed: "failed",
+  NeedsAttention: "needs_attention",
+} as const;
+export type RunStatus = ValueOf<typeof RunStatus>;
+
+export const RunTriggerKind = {
+  Manual: "manual",
+  Debug: "debug",
+  Automation: "automation",
+  Migration: "migration",
+} as const;
+export type RunTriggerKind = ValueOf<typeof RunTriggerKind>;
+
+export const RunSessionKind = {
+  Main: "main",
+  Publication: "publication",
+} as const;
+export type RunSessionKind = ValueOf<typeof RunSessionKind>;
+
+export interface RunTrigger {
+  kind: RunTriggerKind;
+  automationId?: string;
+}
+
+export interface RunPublicationSummary {
+  total: number;
+  queued: number;
+  running: number;
+  succeeded: number;
+  failed: number;
+  needsAttention: number;
+}
+
+export interface RunRecord {
+  id: string;
+  kind: RunKind;
+  status: RunStatus;
+  trigger: RunTrigger;
+  planId?: string;
+  planRevision?: number;
+  planName?: string;
+  requestedTopic?: string;
+  title?: string;
+  packageId?: string;
+  originRunId?: string;
+  subsequentRunIds: string[];
+  publicationSummary: RunPublicationSummary;
+  error?: string;
+  createdAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  updatedAt: string;
+}
+
+export interface RunDestinationSnapshot {
+  destinationId: string;
+  accountId: string;
+  accountName: string;
+  channel: string;
+  publicationType: string;
+  options?: JsonObject;
+}
+
+export interface RunSession {
+  id: string;
+  runId: string;
+  kind: RunSessionKind;
+  status: RunStatus;
+  destination?: RunDestinationSnapshot;
+  jobIds: string[];
+  attempt: number;
+  currentActivity?: string;
+  error?: string;
+  createdAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  updatedAt: string;
+}
+
+export const RunActivityKind = {
+  Session: "session",
+  ModelTurn: "model_turn",
+  ToolCall: "tool_call",
+  Submission: "submission",
+  Prepare: "prepare",
+  Validate: "validate",
+  Upload: "upload",
+  Publish: "publish",
+  Receipt: "receipt",
+  HistoricalTask: "historical_task",
+} as const;
+export type RunActivityKind = ValueOf<typeof RunActivityKind>;
+
+export const RunActivityStatus = {
+  Running: "running",
+  Succeeded: "succeeded",
+  Failed: "failed",
+  NeedsAttention: "needs_attention",
+} as const;
+export type RunActivityStatus = ValueOf<typeof RunActivityStatus>;
+
+export interface RunActivity {
+  id: string;
+  runId: string;
+  sessionId: string;
+  sequence: number;
+  kind: RunActivityKind;
+  status: RunActivityStatus;
+  label: string;
+  summary?: string;
+  taskId?: string;
+  attempt?: number;
+  input?: JsonValue;
+  output?: JsonValue;
+  error?: string;
+  startedAt: string;
+  finishedAt?: string;
+  updatedAt: string;
+}
+
+export interface RunDetail {
+  run: RunRecord;
+  sessions: RunSession[];
+}
+
+export interface ModelStreamEvent {
+  id: string;
+  runId: string;
+  sessionId: string;
+  jobId: string;
+  taskId?: string;
+  type: "response.started" | "response.delta" | "response.tool_delta" | "response.completed";
+  occurredAt: string;
+  data: JsonValue;
 }

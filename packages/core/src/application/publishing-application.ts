@@ -2,12 +2,13 @@ import { JobType, PublicationBatchStatus, WorkspaceKind } from "@trendpublish/co
 import {
   PublicationRunner,
   type ChannelAccount as PublishingChannelAccount,
-  type PublishTarget as PublishingTarget,
+  type PublicationDestination as PublishingDestination,
 } from "@trendpublish/publishing";
 import {
   createJob,
   describeUnknown,
   finishJob,
+  fingerprint,
   JobClaimKind,
   JobStatus,
   TaskRunner,
@@ -15,20 +16,21 @@ import {
   type JobRecord,
   type JobStore,
   type RuntimeEventPublisher,
+  type RunManager,
   type TaskStore,
 } from "@trendpublish/runtime";
 import {
   createWorkspaceEntity,
   type ChannelAccount as WorkspaceChannelAccount,
-  type PublishTarget as WorkspacePublishTarget,
   type StoredPublication,
 } from "../workspace/domain.ts";
+import type { PublicationDestinationSelection } from "@trendpublish/contracts";
 import type { WorkspaceRepository } from "../workspace/repository.ts";
 import { saveFinalArtifact } from "./artifact-persistence.ts";
 
 export interface PublishContentInput {
   packageId: string;
-  targetIds: string[];
+  destinations: PublicationDestinationSelection[];
 }
 
 export interface PublishJobOutput {
@@ -43,6 +45,7 @@ export interface PublishingApplicationOptions {
   publishing: PublicationRunner;
   now?: () => Date;
   events?: RuntimeEventPublisher;
+  runs?: Pick<RunManager, "onTaskActivity">;
 }
 
 export class PublishingApplication {
@@ -51,7 +54,11 @@ export class PublishingApplication {
 
   constructor(private readonly options: PublishingApplicationOptions) {
     this.now = options.now ?? (() => new Date());
-    this.taskRunner = new TaskRunner(options.tasks, { now: this.now, events: options.events });
+    this.taskRunner = new TaskRunner(options.tasks, {
+      now: this.now,
+      events: options.events,
+      activities: options.runs,
+    });
   }
 
   async publish(
@@ -63,12 +70,13 @@ export class PublishingApplication {
 
   createPublishJob(
     input: PublishContentInput,
-    options: { jobId?: string } = {},
+    options: { jobId?: string; runId?: string; sessionId?: string; parentJobId?: string } = {},
   ): Promise<JobRecord<PublishContentInput, PublishJobOutput>> {
     const job = createJob<PublishContentInput, PublishJobOutput>(
       JobType.PublishContent,
       input,
       this.now(),
+      { runId: options.runId, sessionId: options.sessionId, parentJobId: options.parentJobId },
     );
     return this.options.jobs.create(options.jobId ? { ...job, id: options.jobId } : job);
   }
@@ -106,27 +114,22 @@ export class PublishingApplication {
         job.input.packageId,
       );
       if (!storedPackage) throw new Error("内容包不存在");
-      const targets = await Promise.all(
-        job.input.targetIds.map((id) =>
-          this.options.workspace.get(WorkspaceKind.PublishTarget, id),
-        ),
-      );
-      if (targets.some((target) => !target)) throw new Error("发布目标不存在");
+      const accountIds = [...new Set(job.input.destinations.map((item) => item.accountId))];
       const accounts = await Promise.all(
-        [...new Set(targets.map((target) => target!.channelAccountId))].map((id) =>
-          this.options.workspace.get(WorkspaceKind.ChannelAccount, id),
-        ),
+        accountIds.map((id) => this.options.workspace.get(WorkspaceKind.ChannelAccount, id)),
       );
-      if (accounts.some((account) => !account)) throw new Error("发布目标绑定的渠道账号不存在");
+      if (accounts.some((account) => !account)) throw new Error("发布账号不存在");
+      if (accounts.some((account) => account!.enabled === false)) throw new Error("发布账号已停用");
+      const destinations = await Promise.all(
+        job.input.destinations.map(async (selection) => {
+          const account = accounts.find((item) => item!.id === selection.accountId)!;
+          return await toPublishingDestination(selection, account);
+        }),
+      );
       const batch = await this.options.publishing.publish(
         {
           contentPackage: storedPackage.contentPackage,
-          targets: targets.map((target) =>
-            toPublishingTarget(
-              target!,
-              accounts.find((account) => account!.id === target!.channelAccountId)!,
-            ),
-          ),
+          destinations,
           accounts: accounts.map(toPublishingAccount),
         },
         this.taskRunner.forJob(job.id),
@@ -157,7 +160,7 @@ export class PublishingApplication {
           status,
           {
             output: { publicationId: publication.id, status: batch.status },
-            error: status === JobStatus.Succeeded ? undefined : "部分或全部发布目标未成功",
+            error: status === JobStatus.Succeeded ? undefined : "部分或全部发布目的地未成功",
           },
           this.now(),
         ),
@@ -170,17 +173,23 @@ export class PublishingApplication {
   }
 }
 
-function toPublishingTarget(
-  target: WorkspacePublishTarget,
+async function toPublishingDestination(
+  selection: PublicationDestinationSelection,
   account: WorkspaceChannelAccount,
-): PublishingTarget {
-  return {
-    id: target.id,
-    name: target.name,
+): Promise<PublishingDestination> {
+  const identity = {
+    accountId: account.id,
     channel: account.channel,
-    channelAccountId: target.channelAccountId,
-    revision: target.revision,
-    config: target.settings,
+    publicationType: selection.publicationType,
+    options: selection.options ?? {},
+  };
+  const checksum = await fingerprint(identity);
+  return {
+    id: `destination_${checksum.slice(0, 24)}`,
+    channel: account.channel,
+    accountId: account.id,
+    publicationType: selection.publicationType,
+    options: selection.options,
   };
 }
 
@@ -192,5 +201,6 @@ function toPublishingAccount(account: WorkspaceChannelAccount): PublishingChanne
     connectionId: account.connectionId,
     revision: account.revision,
     config: account.settings,
+    publisher: account.publisher,
   };
 }

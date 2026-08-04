@@ -7,7 +7,7 @@ export type {
   PublicationBatchResult,
   PublicationMetadataValue,
   PublishReceipt,
-  TargetPublicationResult,
+  DestinationPublicationResult,
 } from "@trendpublish/contracts/publishing";
 
 export interface ChannelAccount {
@@ -17,19 +17,21 @@ export interface ChannelAccount {
   connectionId: string;
   revision: number;
   config?: Record<string, PublicationMetadataValue>;
+  publisher?: {
+    toolConnectionIds: string[];
+  };
 }
 
-export interface PublishTarget {
+export interface PublicationDestination {
   id: string;
-  name: string;
   channel: string;
-  channelAccountId: string;
-  revision: number;
-  config?: Record<string, PublicationMetadataValue>;
+  accountId: string;
+  publicationType: string;
+  options?: Record<string, PublicationMetadataValue>;
 }
 
 export interface PublicationRequest {
   contentPackage: ContentPackage;
-  targets: PublishTarget[];
+  destinations: PublicationDestination[];
   accounts: ChannelAccount[];
 }

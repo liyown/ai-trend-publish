@@ -116,13 +116,23 @@ function renderParagraph(nodes: DocumentInline[], context: RenderContext): strin
 }
 
 function renderInlines(nodes: DocumentInline[], context: RenderContext): string {
-  return nodes.map((node) => renderInline(node, context)).join("");
+  const output: string[] = [];
+  for (let index = 0; index < nodes.length; index += 1) {
+    const repaired = renderLegacyStrongQuotes(nodes, index, context);
+    if (repaired) {
+      output.push(repaired.html);
+      index += repaired.consumed - 1;
+      continue;
+    }
+    output.push(renderInline(nodes[index]!, context));
+  }
+  return output.join("");
 }
 
 function renderInline(node: DocumentInline, context: RenderContext): string {
   switch (node.type) {
     case "text":
-      return escapeHtml(node.text);
+      return escapeHtml(decodeHtmlText(node.text));
     case "emphasis":
       return `<em>${renderInlines(node.children, context)}</em>`;
     case "strong":
@@ -149,6 +159,32 @@ function renderInline(node: DocumentInline, context: RenderContext): string {
     default:
       return unsupportedNode(node);
   }
+}
+
+function renderLegacyStrongQuotes(
+  nodes: DocumentInline[],
+  index: number,
+  context: RenderContext,
+): { html: string; consumed: number } | null {
+  const before = nodes[index];
+  const connector = nodes[index + 1];
+  const after = nodes[index + 2];
+  if (before?.type !== "text" || connector?.type !== "strong" || after?.type !== "text") {
+    return null;
+  }
+  const opening = before.text.lastIndexOf("**");
+  const closing = after.text.indexOf("**");
+  if (opening < 0 || closing < 1) return null;
+  return {
+    consumed: 3,
+    html: [
+      escapeHtml(decodeHtmlText(before.text.slice(0, opening))),
+      `<strong>${escapeHtml(decodeHtmlText(before.text.slice(opening + 2)))}</strong>`,
+      renderInlines(connector.children, context),
+      `<strong>${escapeHtml(decodeHtmlText(after.text.slice(0, closing)))}</strong>`,
+      escapeHtml(decodeHtmlText(after.text.slice(closing + 2))),
+    ].join(""),
+  };
 }
 
 function renderCitation(
@@ -217,6 +253,27 @@ function safeAssetUrl(value: string): string | null {
 
 function escapeHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+function decodeHtmlText(value: string): string {
+  return value.replace(/&(?:#x[\da-f]+|#\d+|amp|apos|quot|lt|gt|nbsp);/gi, (entity) => {
+    const named: Record<string, string> = {
+      "&amp;": "&",
+      "&apos;": "'",
+      "&quot;": '"',
+      "&lt;": "<",
+      "&gt;": ">",
+      "&nbsp;": " ",
+    };
+    const normalized = entity.toLowerCase();
+    if (normalized in named) return named[normalized]!;
+    const hexadecimal = normalized.match(/^&#x([\da-f]+);$/i)?.[1];
+    const decimal = normalized.match(/^&#(\d+);$/)?.[1];
+    const codePoint = Number.parseInt(hexadecimal ?? decimal ?? "", hexadecimal ? 16 : 10);
+    return Number.isSafeInteger(codePoint) && codePoint >= 0 && codePoint <= 0x10ffff
+      ? String.fromCodePoint(codePoint)
+      : entity;
+  });
 }
 
 function unsupportedNode(node: never): never {

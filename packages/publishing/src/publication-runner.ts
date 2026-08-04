@@ -1,33 +1,41 @@
 import { PublicationBatchStatus, PublicationTargetStatus } from "@trendpublish/contracts";
 import { verifyContentPackageChecksum } from "@trendpublish/article";
+import type { ChatClient, ImageClient } from "@trendpublish/connectors";
 import {
   describeUnknown,
   fingerprint,
   TaskNeedsAttentionError,
   type TaskContext,
 } from "@trendpublish/runtime";
-import type { ChannelAdapter, ChannelAdapterRegistry } from "./adapter.ts";
+import type { ChannelAdapter } from "./adapter.ts";
+import type { ChannelRegistry, PublicationTypeProfile } from "./profile.ts";
 import type {
   ChannelAccount,
   PreparedPublication,
   PreparedPublicationInput,
   PublicationBatchResult,
+  PublicationDestination,
   PublicationRequest,
   PublishReceipt,
-  PublishTarget,
-  TargetPublicationResult,
+  DestinationPublicationResult,
 } from "./domain.ts";
 
 export interface PublicationRunnerOptions {
   now?: () => Date;
+  resolveModel?: (contentPackage: PublicationRequest["contentPackage"]) => Promise<ChatClient>;
+  resolveImage?: (
+    contentPackage: PublicationRequest["contentPackage"],
+    destination: PublicationDestination,
+    account: ChannelAccount,
+  ) => Promise<ImageClient | undefined>;
 }
 
 export class PublicationRunner {
   private readonly now: () => Date;
 
   constructor(
-    private readonly adapters: ChannelAdapterRegistry,
-    options: PublicationRunnerOptions = {},
+    private readonly channels: ChannelRegistry,
+    private readonly options: PublicationRunnerOptions = {},
   ) {
     this.now = options.now ?? (() => new Date());
   }
@@ -37,6 +45,9 @@ export class PublicationRunner {
       throw new Error(`内容包 ${request.contentPackage.id} 完整性校验失败`);
     }
     const requestInput = normalizedRequest(request);
+    const model = this.options.resolveModel
+      ? await this.options.resolveModel(request.contentPackage)
+      : undefined;
     const requestId = await fingerprint(requestInput);
     await task.run(
       { id: "publication-request", version: "1", input: requestInput },
@@ -44,25 +55,53 @@ export class PublicationRunner {
     );
 
     const accounts = new Map(request.accounts.map((account) => [account.id, account]));
-    const results: TargetPublicationResult[] = [];
-    for (const target of request.targets) {
-      const account = accounts.get(target.channelAccountId);
+    const results: DestinationPublicationResult[] = [];
+    for (const destination of request.destinations) {
+      const account = accounts.get(destination.accountId);
       if (!account) {
-        results.push(failedTarget(target, target.channelAccountId, "发布目标引用的渠道账号不存在"));
+        results.push(
+          failedDestination(destination, destination.accountId, "发布目的地引用的账号不存在"),
+        );
         continue;
       }
-      if (target.channel !== account.channel) {
-        results.push(failedTarget(target, account.id, "发布目标与渠道账号类型不一致"));
+      if (destination.channel !== account.channel) {
+        results.push(failedDestination(destination, account.id, "发布目的地与账号渠道不一致"));
         continue;
       }
-      const adapter = this.adapters.get(target.channel);
+      let adapter: ChannelAdapter;
+      let profile: PublicationTypeProfile;
+      try {
+        profile = this.channels.getProfile(destination.channel, destination.publicationType);
+        adapter = this.channels.getAdapter(destination.channel, destination.publicationType);
+      } catch (error) {
+        results.push(failedDestination(destination, account.id, errorMessage(error)));
+        continue;
+      }
+      let image: ImageClient | undefined;
+      try {
+        const imageTools =
+          profile.definition.publisherTools?.filter((tool) => tool.capability === "image") ?? [];
+        if (imageTools.length > 0) {
+          image = this.options.resolveImage
+            ? await this.options.resolveImage(request.contentPackage, destination, account)
+            : undefined;
+          if (!image && imageTools.some((tool) => tool.required)) {
+            throw new Error("发布账号未配置可用的图片生成连接");
+          }
+        }
+      } catch (error) {
+        results.push(failedDestination(destination, account.id, errorMessage(error)));
+        continue;
+      }
       results.push(
-        await this.publishTarget(
+        await this.publishDestination(
           request,
-          target,
+          destination,
           account,
           adapter,
-          task.scope(`target:${target.id}`),
+          model,
+          image,
+          task.scope(`destination:${destination.id}`),
         ),
       );
     }
@@ -71,17 +110,19 @@ export class PublicationRunner {
       requestId,
       packageId: request.contentPackage.id,
       status: aggregateStatus(results),
-      targets: results,
+      destinations: results,
     };
   }
 
-  private async publishTarget(
+  private async publishDestination(
     request: PublicationRequest,
-    target: PublishTarget,
+    destination: PublicationDestination,
     account: ChannelAccount,
     adapter: ChannelAdapter,
+    model: ChatClient | undefined,
+    image: ImageClient | undefined,
     task: TaskContext,
-  ): Promise<TargetPublicationResult> {
+  ): Promise<DestinationPublicationResult> {
     let prepared: PreparedPublication;
     try {
       const input = await task.run(
@@ -90,34 +131,35 @@ export class PublicationRunner {
           version: adapter.version,
           input: {
             packageChecksum: request.contentPackage.checksum,
-            target,
+            destination,
             account: publicAccountSnapshot(account),
             adapter: { id: adapter.id, version: adapter.version },
           },
         },
         async () =>
-          adapter.prepare(request.contentPackage, target, account, {
+          adapter.prepare(request.contentPackage, destination, account, {
             task: task.scope("prepare-internal"),
+            model,
+            image,
             now: this.now,
           }),
       );
       prepared = await freezePreparedPublication({
         input,
         contentPackage: request.contentPackage,
-        target,
+        destination,
         account,
         adapter,
         createdAt: this.now().toISOString(),
       });
     } catch (error) {
-      return failedTarget(target, account.id, errorMessage(error));
+      return failedDestination(destination, account.id, errorMessage(error));
     }
 
     const idempotencyKey = await fingerprint({
       preparedChecksum: prepared.checksum,
       packageChecksum: request.contentPackage.checksum,
-      targetId: target.id,
-      targetRevision: target.revision,
+      destinationId: destination.id,
       accountId: account.id,
       accountRevision: account.revision,
       adapterId: adapter.id,
@@ -138,11 +180,11 @@ export class PublicationRunner {
         },
         async () => receipt,
       );
-      return targetResult(target, account, prepared, savedReceipt);
+      return destinationResult(destination, account, prepared, savedReceipt);
     } catch (error) {
       const unknown = error instanceof TaskNeedsAttentionError;
       return {
-        targetId: target.id,
+        destinationId: destination.id,
         accountId: account.id,
         status: unknown ? PublicationTargetStatus.Unknown : PublicationTargetStatus.Failed,
         prepared,
@@ -155,14 +197,14 @@ export class PublicationRunner {
 async function freezePreparedPublication({
   input,
   contentPackage,
-  target,
+  destination,
   account,
   adapter,
   createdAt,
 }: {
   input: PreparedPublicationInput;
   contentPackage: PublicationRequest["contentPackage"];
-  target: PublishTarget;
+  destination: PublicationDestination;
   account: ChannelAccount;
   adapter: ChannelAdapter;
   createdAt: string;
@@ -171,8 +213,7 @@ async function freezePreparedPublication({
     ...structuredClone(input),
     packageId: contentPackage.id,
     packageChecksum: contentPackage.checksum,
-    targetId: target.id,
-    targetRevision: target.revision,
+    destinationId: destination.id,
     accountId: account.id,
     accountRevision: account.revision,
     adapterId: adapter.id,
@@ -191,8 +232,8 @@ function normalizedRequest(request: PublicationRequest): unknown {
   return {
     packageId: request.contentPackage.id,
     packageChecksum: request.contentPackage.checksum,
-    targets: [...request.targets]
-      .map((target) => structuredClone(target))
+    destinations: [...request.destinations]
+      .map((destination) => structuredClone(destination))
       .sort((left, right) => left.id.localeCompare(right.id)),
     accounts: [...request.accounts]
       .map(publicAccountSnapshot)
@@ -208,17 +249,18 @@ function publicAccountSnapshot(account: ChannelAccount) {
     connectionId: account.connectionId,
     revision: account.revision,
     config: structuredClone(account.config),
+    publisher: structuredClone(account.publisher),
   };
 }
 
-function targetResult(
-  target: PublishTarget,
+function destinationResult(
+  destination: PublicationDestination,
   account: ChannelAccount,
   prepared: PreparedPublication,
   receipt: PublishReceipt,
-): TargetPublicationResult {
+): DestinationPublicationResult {
   return {
-    targetId: target.id,
+    destinationId: destination.id,
     accountId: account.id,
     status: receipt.status,
     prepared,
@@ -227,15 +269,20 @@ function targetResult(
   };
 }
 
-function failedTarget(
-  target: PublishTarget,
+function failedDestination(
+  destination: PublicationDestination,
   accountId: string,
   error: string,
-): TargetPublicationResult {
-  return { targetId: target.id, accountId, status: PublicationTargetStatus.Failed, error };
+): DestinationPublicationResult {
+  return {
+    destinationId: destination.id,
+    accountId,
+    status: PublicationTargetStatus.Failed,
+    error,
+  };
 }
 
-function aggregateStatus(results: TargetPublicationResult[]): PublicationBatchStatus {
+function aggregateStatus(results: DestinationPublicationResult[]): PublicationBatchStatus {
   if (results.some((result) => result.status === PublicationTargetStatus.Unknown)) {
     return PublicationBatchStatus.NeedsAttention;
   }

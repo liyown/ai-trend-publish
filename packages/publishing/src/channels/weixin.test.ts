@@ -1,16 +1,16 @@
 import { expect, test } from "vite-plus/test";
 import type { ContentPackage } from "@trendpublish/article";
-import { ConnectorError, type WeixinClient } from "@trendpublish/connectors";
+import { ConnectorError, type ChatClient, type WeixinClient } from "@trendpublish/connectors";
 import { MemoryTaskStore, TaskNeedsAttentionError, TaskRunner } from "@trendpublish/runtime";
-import type { ChannelAccount, PreparedPublication, PublishTarget } from "../domain.ts";
+import type { ChannelAccount, PreparedPublication, PublicationDestination } from "../domain.ts";
 import { WeixinChannelAdapter } from "./weixin.ts";
 
 test("weixin adapter checkpoints uploads and draft creation independently", async () => {
   const calls = { cover: 0, content: 0, draft: 0 };
   const adapter = adapterWithClient(client(calls));
   const account = channelAccount();
-  const target = publishTarget();
-  const input = await adapter.prepare(contentPackage(), target, account, {
+  const destination = publicationDestination();
+  const input = await adapter.prepare(contentPackage(), destination, account, {
     task: new TaskRunner(new MemoryTaskStore()).forJob("prepare"),
     now: fixedNow,
   });
@@ -28,6 +28,86 @@ test("weixin adapter checkpoints uploads and draft creation independently", asyn
   expect(calls.draft).toBe(1);
 });
 
+test("weixin ReAct creates its required cover inside the publication session", async () => {
+  let modelCalls = 0;
+  const adapter = new WeixinChannelAdapter({
+    resolveClient: async () => client({ cover: 0, content: 0, draft: 0 }),
+    assetLoader: {
+      async load() {
+        throw new Error("prepare should not upload assets");
+      },
+    },
+    model: {
+      async complete(input) {
+        modelCalls += 1;
+        if (modelCalls === 1) {
+          expect(input.tools?.map((tool) => tool.name)).toContain("create_cover_asset");
+          return {
+            content: "",
+            toolCalls: [
+              {
+                id: "create-cover",
+                name: "create_cover_asset",
+                arguments: JSON.stringify({ prompt: "克制的科技编辑封面", alt: "文章封面" }),
+              },
+            ],
+          };
+        }
+        const observation = input.messages.find(
+          (message) => message.role === "tool" && message.toolCallId === "create-cover",
+        );
+        const result = JSON.parse(observation?.content ?? "{}") as {
+          result?: { assetId?: string };
+        };
+        return {
+          content: "",
+          toolCalls: [
+            {
+              id: "submit-weixin",
+              name: "submit_weixin_article",
+              arguments: JSON.stringify({
+                title: "标题",
+                digest: "摘要",
+                contentHtml: "<p>正文</p>",
+                coverAssetId: result.result?.assetId,
+                contentAssetIds: [],
+              }),
+            },
+          ],
+        };
+      },
+    },
+  });
+
+  const prepared = await adapter.prepare(
+    contentPackageWithoutAssets(),
+    publicationDestination(),
+    channelAccount(),
+    {
+      task: new TaskRunner(new MemoryTaskStore()).forJob("prepare-channel-cover"),
+      image: {
+        async generate() {
+          return {
+            images: [
+              {
+                base64: btoa("generated-cover"),
+                mimeType: "image/jpeg",
+              },
+            ],
+          };
+        },
+      },
+      now: fixedNow,
+    },
+  );
+
+  expect(modelCalls).toBe(2);
+  expect(prepared.assets).toHaveLength(1);
+  expect(prepared.assets[0]?.metadata?.fallback).toBeUndefined();
+  expect(prepared.assets[0]?.source.uri).toBe(`data:image/jpeg;base64,${btoa("generated-cover")}`);
+  expect(prepared.metadata?.coverAssetId).toBe(prepared.assets[0]?.id);
+});
+
 test("weixin unknown network outcome becomes needs attention and is not retried", async () => {
   let calls = 0;
   const broken = client({ cover: 0, content: 0, draft: 0 });
@@ -43,7 +123,7 @@ test("weixin unknown network outcome becomes needs attention and is not retried"
   const store = new MemoryTaskStore();
   const task = new TaskRunner(store).forJob("publish-unknown");
   const prepared = preparedPublication(
-    await adapter.prepare(contentPackage(), publishTarget(), channelAccount(), {
+    await adapter.prepare(contentPackage(), publicationDestination(), channelAccount(), {
       task: task.scope("prepare"),
       now: fixedNow,
     }),
@@ -79,9 +159,10 @@ test("weixin refuses to upload asset bytes that do not match the package checksu
         };
       },
     },
+    model: channelModel(),
   });
   const prepared = preparedPublication(
-    await adapter.prepare(contentPackage(), publishTarget(), channelAccount(), {
+    await adapter.prepare(contentPackage(), publicationDestination(), channelAccount(), {
       task: new TaskRunner(new MemoryTaskStore()).forJob("prepare-tampered"),
       now: fixedNow,
     }),
@@ -111,7 +192,31 @@ function adapterWithClient(weixin: WeixinClient): WeixinChannelAdapter {
         };
       },
     },
+    model: channelModel(),
   });
+}
+
+function channelModel(): ChatClient {
+  return {
+    async complete() {
+      return {
+        content: "",
+        toolCalls: [
+          {
+            id: "submit-weixin",
+            name: "submit_weixin_article",
+            arguments: JSON.stringify({
+              title: "标题",
+              digest: "摘要",
+              contentHtml: '<p>正文</p><p><img src="asset://body-image" alt="配图"></p>',
+              coverAssetId: "cover",
+              contentAssetIds: ["body-image"],
+            }),
+          },
+        ],
+      };
+    },
+  };
 }
 
 function client(calls: { cover: number; content: number; draft: number }): WeixinClient {
@@ -145,13 +250,12 @@ function channelAccount(): ChannelAccount {
   };
 }
 
-function publishTarget(): PublishTarget {
+function publicationDestination(): PublicationDestination {
   return {
     id: "target-1",
-    name: "科技号",
     channel: "weixin-official-account",
-    channelAccountId: "account-1",
-    revision: 1,
+    accountId: "account-1",
+    publicationType: "article",
   };
 }
 
@@ -219,6 +323,30 @@ function contentPackage(): ContentPackage {
   };
 }
 
+function contentPackageWithoutAssets(): ContentPackage {
+  const value = contentPackage();
+  return {
+    ...value,
+    source: { ...value.source, bodyMarkdown: "正文" },
+    document: {
+      ...value.document,
+      coverAssetId: undefined,
+      root: {
+        id: "root",
+        type: "root",
+        children: [
+          {
+            id: "body",
+            type: "paragraph",
+            children: [{ id: "body-text", type: "text", text: "正文" }],
+          },
+        ],
+      },
+    },
+    assets: [],
+  };
+}
+
 function preparedPublication(
   input: Awaited<ReturnType<WeixinChannelAdapter["prepare"]>>,
 ): PreparedPublication {
@@ -228,8 +356,7 @@ function preparedPublication(
     checksum: "prepared-checksum",
     packageId: "content-1",
     packageChecksum: "package-checksum",
-    targetId: "target-1",
-    targetRevision: 1,
+    destinationId: "target-1",
     accountId: "account-1",
     accountRevision: 1,
     adapterId: "weixin-official-account",

@@ -6,8 +6,9 @@ import {
   TaskRunner,
   UnknownTaskOutcomeError,
 } from "@trendpublish/runtime";
-import { ChannelAdapterRegistry, type ChannelAdapter } from "./adapter.ts";
-import type { ChannelAccount, PublicationRequest, PublishTarget } from "./domain.ts";
+import type { ChannelAdapter } from "./adapter.ts";
+import type { ChannelAccount, PublicationDestination, PublicationRequest } from "./domain.ts";
+import { ChannelRegistry } from "./profile.ts";
 import { PublicationRunner } from "./publication-runner.ts";
 
 test("one package fans out independently and unknown outcome dominates aggregate status", async () => {
@@ -17,18 +18,26 @@ test("one package fans out independently and unknown outcome dominates aggregate
     "target-c": "unknown",
   });
   const store = new MemoryTaskStore();
-  const service = new PublicationRunner(new ChannelAdapterRegistry([adapter]), { now: fixedNow });
+  const service = new PublicationRunner(testRegistry(adapter), { now: fixedNow });
   const request = await publicationRequest();
 
   const first = await service.publish(request, new TaskRunner(store).forJob("publish-1"));
   expect(first.status).toBe("needs_attention");
-  expect(first.targets.find((item) => item.targetId === "target-a")?.status).toBe("succeeded");
-  expect(first.targets.find((item) => item.targetId === "target-b")?.status).toBe("failed");
-  expect(first.targets.find((item) => item.targetId === "target-c")?.status).toBe("unknown");
+  expect(first.destinations.find((item) => item.destinationId === "target-a")?.status).toBe(
+    "succeeded",
+  );
+  expect(first.destinations.find((item) => item.destinationId === "target-b")?.status).toBe(
+    "failed",
+  );
+  expect(first.destinations.find((item) => item.destinationId === "target-c")?.status).toBe(
+    "unknown",
+  );
 
   const second = await service.publish(request, new TaskRunner(store).forJob("publish-1"));
   expect(second.status).toBe("needs_attention");
-  expect(second.targets.find((item) => item.targetId === "target-b")?.status).toBe("succeeded");
+  expect(second.destinations.find((item) => item.destinationId === "target-b")?.status).toBe(
+    "succeeded",
+  );
   expect(calls.get("target-a:upload-cover")).toBe(1);
   expect(calls.get("target-b:upload-cover")).toBe(1);
   expect(calls.get("target-b:create")).toBe(2);
@@ -37,7 +46,7 @@ test("one package fans out independently and unknown outcome dominates aggregate
 
 test("same publication job rejects a changed package or target request", async () => {
   const store = new MemoryTaskStore();
-  const service = new PublicationRunner(new ChannelAdapterRegistry([fakeAdapter(new Map(), {})]), {
+  const service = new PublicationRunner(testRegistry(fakeAdapter(new Map(), {})), {
     now: fixedNow,
   });
   const request = await publicationRequest();
@@ -59,11 +68,101 @@ test("same publication job rejects a changed package or target request", async (
 test("publication rejects a content package whose payload no longer matches its checksum", async () => {
   const request = await publicationRequest();
   request.contentPackage.source.title = "tampered";
-  const service = new PublicationRunner(new ChannelAdapterRegistry([fakeAdapter(new Map(), {})]));
+  const service = new PublicationRunner(testRegistry(fakeAdapter(new Map(), {})));
 
   await expect(
     service.publish(request, new TaskRunner(new MemoryTaskStore()).forJob("publish-corrupt")),
   ).rejects.toThrow(/完整性校验失败/);
+});
+
+test("publisher tools are resolved separately for each destination account", async () => {
+  const resolved: Array<{ destinationId: string; connectionIds: string[] }> = [];
+  const receivedImages = new Map<string, unknown>();
+  const image = {
+    generate: async () => ({ images: [{ url: "https://example.com/cover.png" }] }),
+  };
+  const adapter: ChannelAdapter = {
+    id: "test-channel-adapter",
+    version: "1",
+    channel: "test",
+    publicationType: "article",
+    async prepare(contentPackage, destination, _account, context) {
+      receivedImages.set(destination.id, context.image);
+      return {
+        title: contentPackage.document.title,
+        digest: contentPackage.document.digest,
+        body: { format: "html", content: `<p>${destination.id}</p>` },
+        assets: contentPackage.assets,
+      };
+    },
+    async publish(_prepared, _account, context) {
+      return { status: "succeeded", publishedAt: context.now().toISOString() };
+    },
+  };
+  const service = new PublicationRunner(testRegistry(adapter, true), {
+    resolveImage: async (_contentPackage, destination, account) => {
+      resolved.push({
+        destinationId: destination.id,
+        connectionIds: account.publisher?.toolConnectionIds ?? [],
+      });
+      return image;
+    },
+  });
+  const request = await publicationRequest();
+  request.accounts[0]!.publisher = { toolConnectionIds: ["image-a"] };
+  request.accounts[1]!.publisher = { toolConnectionIds: ["image-b"] };
+  request.accounts[2]!.publisher = { toolConnectionIds: [] };
+
+  await service.publish(request, new TaskRunner(new MemoryTaskStore()).forJob("publish-images"));
+
+  expect(resolved).toEqual([
+    { destinationId: "target-a", connectionIds: ["image-a"] },
+    { destinationId: "target-b", connectionIds: ["image-b"] },
+    { destinationId: "target-c", connectionIds: [] },
+  ]);
+  expect(receivedImages.get("target-a")).toBe(image);
+  expect(receivedImages.get("target-b")).toBe(image);
+  expect(receivedImages.get("target-c")).toBe(image);
+});
+
+test("publisher tool resolution failure only fails its destination", async () => {
+  const prepared: string[] = [];
+  const adapter: ChannelAdapter = {
+    id: "test-channel-adapter",
+    version: "1",
+    channel: "test",
+    publicationType: "article",
+    async prepare(contentPackage, destination) {
+      prepared.push(destination.id);
+      return {
+        title: contentPackage.document.title,
+        digest: contentPackage.document.digest,
+        body: { format: "html", content: `<p>${destination.id}</p>` },
+        assets: contentPackage.assets,
+      };
+    },
+    async publish(_prepared, _account, context) {
+      return { status: "succeeded", publishedAt: context.now().toISOString() };
+    },
+  };
+  const service = new PublicationRunner(testRegistry(adapter, true), {
+    resolveImage: async (_contentPackage, destination) => {
+      if (destination.id === "target-b") throw new Error("图片生成连接初始化失败：连接已禁用");
+      return { generate: async () => ({ images: [{ url: "https://example.com/cover.png" }] }) };
+    },
+  });
+
+  const result = await service.publish(
+    await publicationRequest(),
+    new TaskRunner(new MemoryTaskStore()).forJob("publish-image-resolution-failure"),
+  );
+
+  expect(result.status).toBe("partial");
+  expect(prepared).toEqual(["target-a", "target-c"]);
+  expect(result.destinations.find((item) => item.destinationId === "target-b")).toMatchObject({
+    status: "failed",
+    error: "图片生成连接初始化失败：连接已禁用",
+  });
 });
 
 function fakeAdapter(
@@ -74,13 +173,14 @@ function fakeAdapter(
     id: "test-channel-adapter",
     version: "1",
     channel: "test",
-    async prepare(contentPackage, target) {
+    publicationType: "article",
+    async prepare(contentPackage, destination) {
       return {
         title: contentPackage.document.title,
         digest: contentPackage.document.digest,
-        body: { format: "html", content: `<p>${target.id}</p>` },
+        body: { format: "html", content: `<p>${destination.id}</p>` },
         assets: contentPackage.assets,
-        metadata: { targetId: target.id },
+        metadata: { destinationId: destination.id },
       };
     },
     async publish(prepared, _account, context) {
@@ -91,7 +191,7 @@ function fakeAdapter(
           input: prepared.assets,
           effect: "idempotent",
         },
-        async () => increment(calls, `${prepared.targetId}:upload-cover`),
+        async () => increment(calls, `${prepared.destinationId}:upload-cover`),
       );
       const created = await context.task.run(
         {
@@ -101,14 +201,14 @@ function fakeAdapter(
           effect: "unsafe",
         },
         async () => {
-          const count = increment(calls, `${prepared.targetId}:create`);
-          if (behavior[prepared.targetId] === "fail-once" && count === 1) {
+          const count = increment(calls, `${prepared.destinationId}:create`);
+          if (behavior[prepared.destinationId] === "fail-once" && count === 1) {
             throw new Error("rate limited");
           }
-          if (behavior[prepared.targetId] === "unknown") {
+          if (behavior[prepared.destinationId] === "unknown") {
             throw new UnknownTaskOutcomeError("create response lost");
           }
-          return { externalId: `${prepared.targetId}-draft` };
+          return { externalId: `${prepared.destinationId}-draft` };
         },
       );
       return {
@@ -128,14 +228,55 @@ async function publicationRequest(): Promise<PublicationRequest> {
     connectionId: `connection-${id}`,
     revision: 1,
   }));
-  const targets: PublishTarget[] = ["a", "b", "c"].map((id) => ({
+  const destinations: PublicationDestination[] = ["a", "b", "c"].map((id) => ({
     id: `target-${id}`,
-    name: id,
     channel: "test",
-    channelAccountId: `account-${id}`,
-    revision: 1,
+    accountId: `account-${id}`,
+    publicationType: "article",
   }));
-  return { contentPackage: await sealContentPackage(contentPackage()), accounts, targets };
+  return { contentPackage: await sealContentPackage(contentPackage()), accounts, destinations };
+}
+
+function testRegistry(adapter: ChannelAdapter, withPublisherTools = false): ChannelRegistry {
+  return new ChannelRegistry([
+    {
+      definition: {
+        id: "test",
+        name: "测试渠道",
+        description: "测试",
+        connectorIds: ["test-connector"],
+        defaultPublicationType: "article",
+      },
+      profiles: [
+        {
+          definition: {
+            channel: "test",
+            type: "article",
+            version: "1",
+            name: "文章",
+            description: "测试文章",
+            supportedModalities: ["article"],
+            requiredArtifacts: [],
+            optionalArtifacts: [],
+            publisherTools: withPublisherTools
+              ? [
+                  {
+                    id: "image",
+                    name: "图片生成",
+                    description: "测试图片生成工具",
+                    capability: "image",
+                  },
+                ]
+              : undefined,
+          },
+          instructions: "测试",
+          outputSchema: {},
+          parse: (value) => value,
+        },
+      ],
+      adapters: [adapter],
+    },
+  ]);
 }
 
 async function sealContentPackage(value: ContentPackage): Promise<ContentPackage> {

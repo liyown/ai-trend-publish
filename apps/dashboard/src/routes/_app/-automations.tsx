@@ -102,7 +102,7 @@ export function AutomationsPage({
         emptyDescription={
           hasEnabledPlan
             ? "创建任务后，可从这里手动运行并查看状态。"
-            : "内容方案组合身份、参考输入、插件和模型连接，是创建任务的前置条件。"
+            : "内容方案组合模板、身份、参考输入和模型连接，是创建任务的前置条件。"
         }
         emptyAction={
           !hasEnabledPlan ? (
@@ -229,7 +229,7 @@ function AutomationDialog({
           <FormField
             label="内容方案"
             required
-            helper="内容方案决定身份、知识库、抓取源、插件、模型和发布配置。"
+            helper="内容方案决定 ReAct 策略、身份、知识库、授权工具、模型和发布配置。"
           >
             <NativeSelect
               value={form.contentPlanId}

@@ -8,94 +8,375 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as AppRouteImport } from './routes/_app'
-import { Route as AppContentPlansPlanIdEditRouteImport } from './routes/_app/content-plans_.$planId.edit'
+import { Route as rootRouteImport } from "./routes/__root";
+import { Route as IndexRouteImport } from "./routes/index";
+import { Route as AppRouteImport } from "./routes/_app";
+import { Route as AppAutomationsRouteImport } from "./routes/_app/automations";
+import { Route as AppConnectionsRouteImport } from "./routes/_app/connections";
+import { Route as AppContentPlansRouteImport } from "./routes/_app/content-plans";
+import { Route as AppIdentitiesRouteImport } from "./routes/_app/identities";
+import { Route as AppJobsRouteImport } from "./routes/_app/jobs";
+import { Route as AppKnowledgeRouteImport } from "./routes/_app/knowledge";
+import { Route as AppLibraryRouteImport } from "./routes/_app/library";
+import { Route as AppPublishingRouteImport } from "./routes/_app/publishing";
+import { Route as AppSettingsRouteImport } from "./routes/_app/settings";
+import { Route as AppSourcesRouteImport } from "./routes/_app/sources";
+import { Route as AppWorkspaceRouteImport } from "./routes/_app/workspace";
+import { Route as AppContentPlansNewRouteImport } from "./routes/_app/content-plans_.new";
+import { Route as AppJobsRunIdRouteImport } from "./routes/_app/jobs_.$runId";
+import { Route as AppContentPlansPlanIdEditRouteImport } from "./routes/_app/content-plans_.$planId.edit";
 
 const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+  id: "/",
+  path: "/",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const AppRoute = AppRouteImport.update({
-  id: '/_app',
+  id: "/_app",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
+const AppAutomationsRoute = AppAutomationsRouteImport.update({
+  id: "/automations",
+  path: "/automations",
+  getParentRoute: () => AppRoute,
+} as any);
+const AppConnectionsRoute = AppConnectionsRouteImport.update({
+  id: "/connections",
+  path: "/connections",
+  getParentRoute: () => AppRoute,
+} as any);
+const AppContentPlansRoute = AppContentPlansRouteImport.update({
+  id: "/content-plans",
+  path: "/content-plans",
+  getParentRoute: () => AppRoute,
+} as any);
+const AppIdentitiesRoute = AppIdentitiesRouteImport.update({
+  id: "/identities",
+  path: "/identities",
+  getParentRoute: () => AppRoute,
+} as any);
+const AppJobsRoute = AppJobsRouteImport.update({
+  id: "/jobs",
+  path: "/jobs",
+  getParentRoute: () => AppRoute,
+} as any);
+const AppKnowledgeRoute = AppKnowledgeRouteImport.update({
+  id: "/knowledge",
+  path: "/knowledge",
+  getParentRoute: () => AppRoute,
+} as any);
+const AppLibraryRoute = AppLibraryRouteImport.update({
+  id: "/library",
+  path: "/library",
+  getParentRoute: () => AppRoute,
+} as any);
+const AppPublishingRoute = AppPublishingRouteImport.update({
+  id: "/publishing",
+  path: "/publishing",
+  getParentRoute: () => AppRoute,
+} as any);
+const AppSettingsRoute = AppSettingsRouteImport.update({
+  id: "/settings",
+  path: "/settings",
+  getParentRoute: () => AppRoute,
+} as any);
+const AppSourcesRoute = AppSourcesRouteImport.update({
+  id: "/sources",
+  path: "/sources",
+  getParentRoute: () => AppRoute,
+} as any);
+const AppWorkspaceRoute = AppWorkspaceRouteImport.update({
+  id: "/workspace",
+  path: "/workspace",
+  getParentRoute: () => AppRoute,
+} as any);
+const AppContentPlansNewRoute = AppContentPlansNewRouteImport.update({
+  id: "/content-plans_/new",
+  path: "/content-plans/new",
+  getParentRoute: () => AppRoute,
+} as any);
+const AppJobsRunIdRoute = AppJobsRunIdRouteImport.update({
+  id: "/jobs_/$runId",
+  path: "/jobs/$runId",
+  getParentRoute: () => AppRoute,
+} as any);
 const AppContentPlansPlanIdEditRoute =
   AppContentPlansPlanIdEditRouteImport.update({
-    id: '/content-plans_/$planId/edit',
-    path: '/content-plans/$planId/edit',
+    id: "/content-plans_/$planId/edit",
+    path: "/content-plans/$planId/edit",
     getParentRoute: () => AppRoute,
-  } as any)
+  } as any);
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/content-plans/$planId/edit': typeof AppContentPlansPlanIdEditRoute
+  "/": typeof IndexRoute;
+  "/automations": typeof AppAutomationsRoute;
+  "/connections": typeof AppConnectionsRoute;
+  "/content-plans": typeof AppContentPlansRoute;
+  "/identities": typeof AppIdentitiesRoute;
+  "/jobs": typeof AppJobsRoute;
+  "/knowledge": typeof AppKnowledgeRoute;
+  "/library": typeof AppLibraryRoute;
+  "/publishing": typeof AppPublishingRoute;
+  "/settings": typeof AppSettingsRoute;
+  "/sources": typeof AppSourcesRoute;
+  "/workspace": typeof AppWorkspaceRoute;
+  "/content-plans/new": typeof AppContentPlansNewRoute;
+  "/jobs/$runId": typeof AppJobsRunIdRoute;
+  "/content-plans/$planId/edit": typeof AppContentPlansPlanIdEditRoute;
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/content-plans/$planId/edit': typeof AppContentPlansPlanIdEditRoute
+  "/": typeof IndexRoute;
+  "/automations": typeof AppAutomationsRoute;
+  "/connections": typeof AppConnectionsRoute;
+  "/content-plans": typeof AppContentPlansRoute;
+  "/identities": typeof AppIdentitiesRoute;
+  "/jobs": typeof AppJobsRoute;
+  "/knowledge": typeof AppKnowledgeRoute;
+  "/library": typeof AppLibraryRoute;
+  "/publishing": typeof AppPublishingRoute;
+  "/settings": typeof AppSettingsRoute;
+  "/sources": typeof AppSourcesRoute;
+  "/workspace": typeof AppWorkspaceRoute;
+  "/content-plans/new": typeof AppContentPlansNewRoute;
+  "/jobs/$runId": typeof AppJobsRunIdRoute;
+  "/content-plans/$planId/edit": typeof AppContentPlansPlanIdEditRoute;
 }
 export interface FileRoutesById {
-  __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/_app': typeof AppRouteWithChildren
-  '/_app/content-plans_/$planId/edit': typeof AppContentPlansPlanIdEditRoute
+  __root__: typeof rootRouteImport;
+  "/": typeof IndexRoute;
+  "/_app": typeof AppRouteWithChildren;
+  "/_app/automations": typeof AppAutomationsRoute;
+  "/_app/connections": typeof AppConnectionsRoute;
+  "/_app/content-plans": typeof AppContentPlansRoute;
+  "/_app/identities": typeof AppIdentitiesRoute;
+  "/_app/jobs": typeof AppJobsRoute;
+  "/_app/knowledge": typeof AppKnowledgeRoute;
+  "/_app/library": typeof AppLibraryRoute;
+  "/_app/publishing": typeof AppPublishingRoute;
+  "/_app/settings": typeof AppSettingsRoute;
+  "/_app/sources": typeof AppSourcesRoute;
+  "/_app/workspace": typeof AppWorkspaceRoute;
+  "/_app/content-plans_/new": typeof AppContentPlansNewRoute;
+  "/_app/jobs_/$runId": typeof AppJobsRunIdRoute;
+  "/_app/content-plans_/$planId/edit": typeof AppContentPlansPlanIdEditRoute;
 }
 export interface FileRouteTypes {
-  fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/content-plans/$planId/edit'
-  fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/content-plans/$planId/edit'
-  id: '__root__' | '/' | '/_app' | '/_app/content-plans_/$planId/edit'
-  fileRoutesById: FileRoutesById
+  fileRoutesByFullPath: FileRoutesByFullPath;
+  fullPaths:
+    | "/"
+    | "/automations"
+    | "/connections"
+    | "/content-plans"
+    | "/identities"
+    | "/jobs"
+    | "/knowledge"
+    | "/library"
+    | "/publishing"
+    | "/settings"
+    | "/sources"
+    | "/workspace"
+    | "/content-plans/new"
+    | "/jobs/$runId"
+    | "/content-plans/$planId/edit";
+  fileRoutesByTo: FileRoutesByTo;
+  to:
+    | "/"
+    | "/automations"
+    | "/connections"
+    | "/content-plans"
+    | "/identities"
+    | "/jobs"
+    | "/knowledge"
+    | "/library"
+    | "/publishing"
+    | "/settings"
+    | "/sources"
+    | "/workspace"
+    | "/content-plans/new"
+    | "/jobs/$runId"
+    | "/content-plans/$planId/edit";
+  id:
+    | "__root__"
+    | "/"
+    | "/_app"
+    | "/_app/automations"
+    | "/_app/connections"
+    | "/_app/content-plans"
+    | "/_app/identities"
+    | "/_app/jobs"
+    | "/_app/knowledge"
+    | "/_app/library"
+    | "/_app/publishing"
+    | "/_app/settings"
+    | "/_app/sources"
+    | "/_app/workspace"
+    | "/_app/content-plans_/new"
+    | "/_app/jobs_/$runId"
+    | "/_app/content-plans_/$planId/edit";
+  fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  AppRoute: typeof AppRouteWithChildren
+  IndexRoute: typeof IndexRoute;
+  AppRoute: typeof AppRouteWithChildren;
 }
 
-declare module '@tanstack/react-router' {
+declare module "@tanstack/react-router" {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/_app': {
-      id: '/_app'
-      path: ''
-      fullPath: '/'
-      preLoaderRoute: typeof AppRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/_app/content-plans_/$planId/edit': {
-      id: '/_app/content-plans_/$planId/edit'
-      path: '/content-plans/$planId/edit'
-      fullPath: '/content-plans/$planId/edit'
-      preLoaderRoute: typeof AppContentPlansPlanIdEditRouteImport
-      parentRoute: typeof AppRoute
-    }
+    "/": {
+      id: "/";
+      path: "/";
+      fullPath: "/";
+      preLoaderRoute: typeof IndexRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/_app": {
+      id: "/_app";
+      path: "";
+      fullPath: "/";
+      preLoaderRoute: typeof AppRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/_app/automations": {
+      id: "/_app/automations";
+      path: "/automations";
+      fullPath: "/automations";
+      preLoaderRoute: typeof AppAutomationsRouteImport;
+      parentRoute: typeof AppRoute;
+    };
+    "/_app/connections": {
+      id: "/_app/connections";
+      path: "/connections";
+      fullPath: "/connections";
+      preLoaderRoute: typeof AppConnectionsRouteImport;
+      parentRoute: typeof AppRoute;
+    };
+    "/_app/content-plans": {
+      id: "/_app/content-plans";
+      path: "/content-plans";
+      fullPath: "/content-plans";
+      preLoaderRoute: typeof AppContentPlansRouteImport;
+      parentRoute: typeof AppRoute;
+    };
+    "/_app/identities": {
+      id: "/_app/identities";
+      path: "/identities";
+      fullPath: "/identities";
+      preLoaderRoute: typeof AppIdentitiesRouteImport;
+      parentRoute: typeof AppRoute;
+    };
+    "/_app/jobs": {
+      id: "/_app/jobs";
+      path: "/jobs";
+      fullPath: "/jobs";
+      preLoaderRoute: typeof AppJobsRouteImport;
+      parentRoute: typeof AppRoute;
+    };
+    "/_app/knowledge": {
+      id: "/_app/knowledge";
+      path: "/knowledge";
+      fullPath: "/knowledge";
+      preLoaderRoute: typeof AppKnowledgeRouteImport;
+      parentRoute: typeof AppRoute;
+    };
+    "/_app/library": {
+      id: "/_app/library";
+      path: "/library";
+      fullPath: "/library";
+      preLoaderRoute: typeof AppLibraryRouteImport;
+      parentRoute: typeof AppRoute;
+    };
+    "/_app/publishing": {
+      id: "/_app/publishing";
+      path: "/publishing";
+      fullPath: "/publishing";
+      preLoaderRoute: typeof AppPublishingRouteImport;
+      parentRoute: typeof AppRoute;
+    };
+    "/_app/settings": {
+      id: "/_app/settings";
+      path: "/settings";
+      fullPath: "/settings";
+      preLoaderRoute: typeof AppSettingsRouteImport;
+      parentRoute: typeof AppRoute;
+    };
+    "/_app/sources": {
+      id: "/_app/sources";
+      path: "/sources";
+      fullPath: "/sources";
+      preLoaderRoute: typeof AppSourcesRouteImport;
+      parentRoute: typeof AppRoute;
+    };
+    "/_app/workspace": {
+      id: "/_app/workspace";
+      path: "/workspace";
+      fullPath: "/workspace";
+      preLoaderRoute: typeof AppWorkspaceRouteImport;
+      parentRoute: typeof AppRoute;
+    };
+    "/_app/content-plans_/new": {
+      id: "/_app/content-plans_/new";
+      path: "/content-plans/new";
+      fullPath: "/content-plans/new";
+      preLoaderRoute: typeof AppContentPlansNewRouteImport;
+      parentRoute: typeof AppRoute;
+    };
+    "/_app/jobs_/$runId": {
+      id: "/_app/jobs_/$runId";
+      path: "/jobs/$runId";
+      fullPath: "/jobs/$runId";
+      preLoaderRoute: typeof AppJobsRunIdRouteImport;
+      parentRoute: typeof AppRoute;
+    };
+    "/_app/content-plans_/$planId/edit": {
+      id: "/_app/content-plans_/$planId/edit";
+      path: "/content-plans/$planId/edit";
+      fullPath: "/content-plans/$planId/edit";
+      preLoaderRoute: typeof AppContentPlansPlanIdEditRouteImport;
+      parentRoute: typeof AppRoute;
+    };
   }
 }
 
 interface AppRouteChildren {
-  AppContentPlansPlanIdEditRoute: typeof AppContentPlansPlanIdEditRoute
+  AppAutomationsRoute: typeof AppAutomationsRoute;
+  AppConnectionsRoute: typeof AppConnectionsRoute;
+  AppContentPlansRoute: typeof AppContentPlansRoute;
+  AppIdentitiesRoute: typeof AppIdentitiesRoute;
+  AppJobsRoute: typeof AppJobsRoute;
+  AppKnowledgeRoute: typeof AppKnowledgeRoute;
+  AppLibraryRoute: typeof AppLibraryRoute;
+  AppPublishingRoute: typeof AppPublishingRoute;
+  AppSettingsRoute: typeof AppSettingsRoute;
+  AppSourcesRoute: typeof AppSourcesRoute;
+  AppWorkspaceRoute: typeof AppWorkspaceRoute;
+  AppContentPlansNewRoute: typeof AppContentPlansNewRoute;
+  AppJobsRunIdRoute: typeof AppJobsRunIdRoute;
+  AppContentPlansPlanIdEditRoute: typeof AppContentPlansPlanIdEditRoute;
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAutomationsRoute: AppAutomationsRoute,
+  AppConnectionsRoute: AppConnectionsRoute,
+  AppContentPlansRoute: AppContentPlansRoute,
+  AppIdentitiesRoute: AppIdentitiesRoute,
+  AppJobsRoute: AppJobsRoute,
+  AppKnowledgeRoute: AppKnowledgeRoute,
+  AppLibraryRoute: AppLibraryRoute,
+  AppPublishingRoute: AppPublishingRoute,
+  AppSettingsRoute: AppSettingsRoute,
+  AppSourcesRoute: AppSourcesRoute,
+  AppWorkspaceRoute: AppWorkspaceRoute,
+  AppContentPlansNewRoute: AppContentPlansNewRoute,
+  AppJobsRunIdRoute: AppJobsRunIdRoute,
   AppContentPlansPlanIdEditRoute: AppContentPlansPlanIdEditRoute,
-}
+};
 
-const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
+const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren);
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
-}
+};
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
-  ._addFileTypes<FileRouteTypes>()
+  ._addFileTypes<FileRouteTypes>();

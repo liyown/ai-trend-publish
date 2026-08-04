@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   listSourceCollections,
@@ -62,7 +62,7 @@ const newItem = (kind: SourceItem["kind"] = "url"): SourceItem =>
 
 function SourcesPage() {
   const { page } = Route.useSearch();
-  const navigate = useNavigate();
+  const navigate = Route.useNavigate();
   const { data } = useSourceCollections(page);
   const [editing, setEditing] = useState<SourceCollection | "new" | null>(null);
   const remove = useDeleteSourceCollection();

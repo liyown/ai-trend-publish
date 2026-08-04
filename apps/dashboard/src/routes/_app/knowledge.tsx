@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   listKnowledgeBases,
@@ -59,7 +59,7 @@ const blank: SaveKnowledgeBasePayload = { name: "", enabled: true, documents: []
 
 function KnowledgePage() {
   const { page } = Route.useSearch();
-  const navigate = useNavigate();
+  const navigate = Route.useNavigate();
   const { data } = useKnowledgeBases(page);
   const save = useSaveKnowledgeBase();
   const remove = useDeleteKnowledgeBase();

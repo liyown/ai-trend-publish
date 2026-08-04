@@ -78,7 +78,7 @@ function IdentitiesPage() {
     <PageGrid>
       <EntityList
         title="身份列表"
-        description="一个内容身份可以通过不同发布目标连接到多个渠道账号。"
+        description="一个内容身份可以由不同内容方案发布到多个渠道账号。"
         action={
           <Button variant="primary" onClick={() => setEditing("new")}>
             <Plus className="size-4" />
@@ -194,7 +194,7 @@ function IdentityDialog({
           <div className="max-w-2xl">
             <FormField
               label="禁止主题"
-              helper="每行一条；标题规则和质量标准在内容方案的插件步骤配置。"
+              helper="每行一条；Agent 策略和增强工具会在运行时遵守这些边界。"
             >
               <Textarea
                 className="min-h-28"

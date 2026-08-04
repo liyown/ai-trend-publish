@@ -273,7 +273,7 @@ function workspaceHeaderModel({
         { label: creating ? "新建" : "编辑" },
       ],
       title: creating ? "新建内容方案" : "编辑内容方案",
-      detail: "分步配置身份、参考输入、处理插件与发布目标。",
+      detail: "配置 ReAct 策略、身份、授权工具与发布账号。",
     };
   }
 

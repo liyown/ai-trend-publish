@@ -57,7 +57,301 @@
 html {
   min-width: 320px;
   background: var(--paper);
+  scrollbar-gutter: stable;
   scroll-behavior: smooth;
+}
+
+.scrollbar-stable {
+  scrollbar-gutter: stable;
+}
+
+.publication-flow-canvas {
+  --publication-flow-source: 220px;
+  --publication-flow-rail: 96px;
+  display: grid;
+  grid-template-columns:
+    minmax(180px, var(--publication-flow-source)) var(--publication-flow-rail)
+    minmax(260px, 1fr);
+  align-items: stretch;
+  padding: 20px;
+}
+
+.publication-flow-source-wrap {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.publication-flow-node {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  height: 68px;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.publication-flow-source {
+  width: 100%;
+  padding: 12px;
+  box-shadow: 0 8px 22px rgba(20, 20, 24, 0.06);
+}
+
+.publication-flow-icon {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 7px;
+  background: var(--surface-2);
+  color: var(--muted-strong);
+}
+
+.publication-flow-rail {
+  position: relative;
+  min-height: 68px;
+}
+
+.publication-flow-line,
+.publication-flow-selection-line,
+.publication-flow-signal {
+  position: absolute;
+  pointer-events: none;
+}
+
+.publication-flow-line {
+  z-index: 0;
+  background: var(--border);
+}
+
+.publication-flow-source-line {
+  left: 0;
+  width: 50%;
+  height: 1px;
+}
+
+.publication-flow-trunk {
+  left: 50%;
+  width: 1px;
+}
+
+.publication-flow-branch {
+  right: 0;
+  left: 50%;
+  height: 1px;
+}
+
+.publication-flow-branch[data-status="succeeded"] {
+  background: color-mix(in srgb, var(--success) 40%, var(--border));
+}
+
+.publication-flow-branch[data-status="failed"] {
+  background: color-mix(in srgb, var(--danger) 42%, var(--border));
+}
+
+.publication-flow-selection-line {
+  z-index: 1;
+  background: color-mix(in srgb, var(--ink) 44%, var(--border));
+}
+
+.publication-flow-signal {
+  z-index: 2;
+  background-color: color-mix(in srgb, var(--info) 34%, var(--surface));
+}
+
+.publication-flow-path-source,
+.publication-flow-path-branch {
+  width: 50%;
+  height: 2px;
+}
+
+.publication-flow-path-source {
+  left: 0;
+}
+
+.publication-flow-path-branch {
+  right: 0;
+}
+
+.publication-flow-path-vertical {
+  left: 50%;
+  width: 2px;
+}
+
+.publication-flow-signal.is-animated.publication-flow-path-source,
+.publication-flow-signal.is-animated.publication-flow-path-branch {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0,
+    transparent 34%,
+    var(--info) 50%,
+    transparent 66%,
+    transparent 100%
+  );
+  background-repeat: repeat-x;
+  background-size: 44px 100%;
+  animation: publication-flow-x 0.9s linear infinite;
+  will-change: background-position;
+}
+
+.publication-flow-signal.is-animated.publication-flow-path-vertical {
+  background-image: linear-gradient(
+    180deg,
+    transparent 0,
+    transparent 34%,
+    var(--info) 50%,
+    transparent 66%,
+    transparent 100%
+  );
+  background-repeat: repeat-y;
+  background-size: 100% 44px;
+  animation: publication-flow-y 0.9s linear infinite;
+  will-change: background-position;
+}
+
+.publication-flow-signal.is-animated.publication-flow-path-vertical[data-direction="up"] {
+  animation-direction: reverse;
+}
+
+.publication-flow-destinations {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.publication-flow-channel {
+  width: 100%;
+  padding: 10px 12px;
+  color: var(--ink);
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard);
+}
+
+.publication-flow-channel:hover {
+  border-color: color-mix(in srgb, var(--ink) 24%, var(--border));
+  background: var(--surface-2);
+}
+
+.publication-flow-channel:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 4px var(--focus);
+}
+
+.publication-flow-selection {
+  position: absolute;
+  inset: -1px;
+  z-index: 0;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface-2) 72%, transparent);
+}
+
+.publication-flow-port {
+  position: absolute;
+  top: 50%;
+  left: -5px;
+  z-index: 3;
+  width: 9px;
+  height: 9px;
+  transform: translateY(-50%);
+  border: 2px solid var(--surface);
+  border-radius: 999px;
+  background: var(--muted);
+}
+
+.publication-flow-port[data-status="running"] {
+  background: var(--info);
+}
+
+.publication-flow-port[data-status="succeeded"] {
+  background: var(--success);
+}
+
+.publication-flow-port[data-status="failed"] {
+  background: var(--danger);
+}
+
+.publication-flow-port[data-status="needs_attention"] {
+  background: var(--warning);
+}
+
+@keyframes publication-flow-x {
+  from {
+    background-position: -44px 0;
+  }
+  to {
+    background-position: 44px 0;
+  }
+}
+
+@keyframes publication-flow-y {
+  from {
+    background-position: 0 -44px;
+  }
+  to {
+    background-position: 0 44px;
+  }
+}
+
+@media (max-width: 767px) {
+  .publication-flow-canvas {
+    display: block;
+    padding: 16px;
+  }
+
+  .publication-flow-source-wrap {
+    margin-bottom: 28px;
+  }
+
+  .publication-flow-source-wrap::after {
+    position: absolute;
+    right: 50%;
+    bottom: -18px;
+    left: 8px;
+    height: 18px;
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    content: "";
+  }
+
+  .publication-flow-rail {
+    display: none;
+  }
+
+  .publication-flow-destinations {
+    padding-left: 24px;
+  }
+
+  .publication-flow-destinations::before {
+    position: absolute;
+    top: -10px;
+    bottom: 34px;
+    left: 8px;
+    width: 1px;
+    background: var(--border);
+    content: "";
+  }
+
+  .publication-flow-channel::before {
+    position: absolute;
+    top: 50%;
+    left: -16px;
+    width: 16px;
+    height: 1px;
+    background: var(--border);
+    content: "";
+  }
 }
 
 body {

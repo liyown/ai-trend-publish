@@ -43,19 +43,19 @@ export function AppDialog({
         )}
       >
         <AppDialogFooterRootContext.Provider value={footerRoot}>
-          <DialogHeader className="flex flex-col gap-1 border-b border-[var(--border)] bg-[var(--surface)] px-5 py-3.5 pr-14 text-left sm:flex-row sm:items-baseline sm:gap-3">
-            <DialogTitle className="shrink-0 text-base font-semibold leading-6 text-[var(--ink)]">
+          <DialogHeader className="grid min-w-0 gap-1 border-b border-[var(--border)] bg-[var(--surface)] px-5 py-3.5 pr-14 text-left">
+            <DialogTitle className="min-w-0 break-words text-base font-semibold leading-6 text-[var(--ink)]">
               {title}
             </DialogTitle>
             {description ? (
-              <DialogDescription className="min-w-0 text-sm leading-5 text-[var(--muted-strong)]">
+              <DialogDescription className="min-w-0 break-words text-xs leading-5 text-[var(--muted-strong)]">
                 {description}
               </DialogDescription>
             ) : null}
           </DialogHeader>
           <div
             data-slot="app-dialog-content"
-            className="min-h-0 overflow-y-auto overscroll-contain bg-[var(--surface)] p-5"
+            className="scrollbar-stable min-h-0 overflow-y-auto overscroll-contain bg-[var(--surface)] p-5"
           >
             {children}
           </div>

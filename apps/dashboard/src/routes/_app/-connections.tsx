@@ -19,8 +19,8 @@ import { Badge } from "#components/ui/badge.tsx";
 import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
 import { describeError, FormError } from "#components/product/form-error.tsx";
 import { PageGrid } from "#components/product/page-grid.tsx";
-import { suggestConnectionName } from "./connection-naming.ts";
-export { suggestConnectionName } from "./connection-naming.ts";
+import { suggestConnectionName } from "./-connection-naming.ts";
+export { suggestConnectionName } from "./-connection-naming.ts";
 import type {
   Connection,
   ConnectorDefinition,
@@ -313,6 +313,8 @@ function ConnectionDialog({
         </details>
         {result ? (
           <div
+            role="status"
+            aria-live="polite"
             className={`rounded border px-3 py-2 text-xs ${result.success ? "border-[var(--success-border)] bg-[var(--success-bg)] text-[var(--success)]" : "border-[var(--danger-border)] bg-[var(--danger-bg)] text-[var(--danger)]"}`}
           >
             {result.message} · {result.latencyMs} ms
@@ -325,8 +327,11 @@ function ConnectionDialog({
           loading={test.isPending}
           disabled={missingRequiredField}
           onClick={() => {
+            setResult(undefined);
             try {
-              test.mutate(payload());
+              test.mutate(payload(), {
+                onSuccess: (response) => setResult(response.test),
+              });
             } catch (error) {
               setResult({ success: false, message: describeError(error), latencyMs: 0 });
             }

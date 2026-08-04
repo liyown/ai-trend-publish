@@ -1,6 +1,6 @@
 import { equal } from "node:assert/strict";
 import { test } from "vite-plus/test";
-import { suggestConnectionName } from "../apps/dashboard/src/features/studio/connection-naming.ts";
+import { suggestConnectionName } from "../apps/dashboard/src/routes/_app/-connection-naming.ts";
 
 test("uses the connector name when it is unused", () => {
   equal(suggestConnectionName("MiniMax", ["OpenAI"]), "MiniMax");

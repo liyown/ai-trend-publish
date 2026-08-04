@@ -57,7 +57,7 @@ export const navDomains = [
         to: "/automations",
         label: "任务",
         description: "内容与发布编排",
-        detail: "选择内容方案、发布目标和触发方式。",
+        detail: "选择内容方案、发布账号和触发方式。",
         icon: ListTodo,
       },
       {
@@ -93,7 +93,7 @@ export const navDomains = [
       },
       {
         to: "/sources",
-        label: "抓取数据源",
+        label: "输入来源",
         description: "动态数据输入",
         detail: "维护运行时需要抓取的网页和数据来源。",
         icon: Newspaper,
@@ -101,8 +101,8 @@ export const navDomains = [
       {
         to: "/content-plans",
         label: "内容方案",
-        description: "固定流程与插件",
-        detail: "分步组合身份、知识库、抓取源、插件和发布配置。",
+        description: "ReAct 策略与工具",
+        detail: "组合 Agent 策略、身份、知识库、授权工具和发布配置。",
         icon: ListChecks,
       },
     ],
@@ -117,9 +117,9 @@ export const navDomains = [
     items: [
       {
         to: "/publishing",
-        label: "渠道与目标",
+        label: "发布账号",
         description: "身份 + 账号",
-        detail: "维护渠道账号与发布目标。",
+        detail: "维护渠道、接入方式与账号凭证。",
         icon: RadioTower,
       },
     ],
@@ -167,7 +167,7 @@ export const navDomains = [
         to: "/settings",
         label: "运行架构",
         description: "扩展注册",
-        detail: "查看流水线、插件和渠道适配器。",
+        detail: "查看 Agent 策略、工具和渠道发布类型。",
         icon: Settings,
       },
     ],

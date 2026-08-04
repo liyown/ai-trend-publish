@@ -11,23 +11,26 @@ function SettingsPage() {
   return (
     <PageGrid>
       <EntityList
-        title="已注册扩展"
-        description="扩展注册是代码级能力；运行参数由内容方案和连接保存。"
+        title="内置模板与渠道"
+        description="只读展示当前真正可用的模板、渠道和发布类型；内部提示词与 Schema 不对外暴露。"
       >
-        {workspace?.articleExtensions.plugins.map((item) => (
+        {workspace?.contentPlanTemplates.map((item) => (
           <EntityRow
             key={item.id}
             title={item.name}
-            description={item.optional ? "可按预设启用" : "默认质量能力"}
+            description={`${item.description} · ${item.stages.join(" → ")}`}
             status="ready"
-            meta={<Badge>plugin</Badge>}
+            meta={<Badge>template</Badge>}
           />
         ))}
         {workspace?.channelDefinitions.map((item) => (
           <EntityRow
             key={item.id}
             title={item.name}
-            description={`需要 ${item.requiredCapability} 连接能力`}
+            description={`${item.description} · ${workspace.publicationTypeProfiles
+              .filter((profile) => profile.channel === item.id)
+              .map((profile) => profile.name)
+              .join(" / ")}`}
             status="ready"
             meta={<Badge>channel</Badge>}
           />

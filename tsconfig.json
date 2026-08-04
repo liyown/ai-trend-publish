@@ -1,10 +1,29 @@
 {
   "compilerOptions": {
-    "baseUrl": ".",
-    "paths": {
-      "@src/*": [
-        "src/*"
-      ]
-    }
-  }
+    "target": "ES2024",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": false,
+    "types": ["node", "vite-plus/test/globals"],
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": [
+    "apps/server/src/**/*.ts",
+    "packages/**/*.ts",
+    "packages/**/*.d.ts",
+    "tests/**/*.ts",
+    "types/**/*.d.ts",
+    "vitest.config.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "apps/dashboard/node_modules",
+    "apps/dashboard/src",
+    "dist",
+    "apps/server/src/**/*.test.ts",
+    "packages/**/*.test.ts",
+    "packages/**/test/**/*.ts"
+  ]
 }

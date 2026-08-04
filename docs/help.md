@@ -1,73 +1,33 @@
-# 帮助文档
+# 故障排查
 
-## 常用入口
+## 服务无法启动
 
-- [快速开始](/getting-started)
-- [配置说明](/configuration)
-- [部署与发布](/deployment)
-- [JSON-RPC API](/api/json-rpc-api)
-- [数据获取 API](/integrations/data-fetching-apis)
-- [钉钉 Webhook 配置指南](/integrations/dingtalk-webhook-guide)
-- [Jina AI 集成指南](/integrations/jina-integration-guide)
+运行 `vp run doctor`。确认 `trendpublish.config.ts` 存在、`server.apiKey` 非空，SQLite 目录可写。
 
-## 常见问题
+## Dashboard 返回 401
 
-### 启动时报配置错误
+退出后重新输入与 `server.apiKey` 一致的访问密钥。服务不会在日志中打印该密钥。
 
-1. 确认仓库根目录存在 `trendpublish.config.ts`。
-2. 运行 `deno task doctor` 查看缺失项。
-3. 对照 `trendpublish.config.example.ts` 补齐基础配置（尤其是
-   `server.apiKey`、`providers.publish.weixin` 与 `providers.ai` 配置）。
-4. 如果是数据库相关错误，先将 `features.article.deduplication.enabled=false`
-   试跑，确认核心流程可用后再接入数据库。
+## 连接测试失败
 
-### JSON-RPC 请求返回 401
+先核对基础字段和凭证，再检查 Headers、Query、Body 覆盖是否改变了服务需要的请求。连接测试只执行一次真实请求，不会隐藏错误或自动重试。
 
-1. 请求头必须是 `Authorization: Bearer <server.apiKey>`。
-2. 确认 `trendpublish.config.ts` 中 `server.apiKey` 与请求值一致。
+## 成品带有质量告警
 
-### JSON-RPC 请求返回 404
+内容库中的成品可能保留质量告警，这是自动降级的结果，不需要人工审核。资料不足时系统会生成不虚构外部事实的分析型内容；无法解析的引用会转为普通文本。渠道要求的封面和其他资源由对应发布 ReAct 获取与组装，图片生成失败时由该渠道使用内置封面。若任务本身失败，请在运行记录中处理模型、存储、网络或渠道返回的真实执行错误。
 
-1. 路径必须是 `POST /api/workflow`。
-2. 不要遗漏 `/api` 前缀。
+## 来源类型不受支持
 
-### 定时任务没有执行
+URL 来源需要分组中至少有一个支持 `url` 的网页读取连接，查询来源需要支持 `query` 的搜索连接。保存来源配置时会检查兼容性；运行时仍会复核并报告不匹配，不会把它当作“没有搜索结果”。
 
-1. 程序内置 cron 表达式为每天 `03:00`（时区 `Asia/Shanghai`）。
-2. 定时任务固定执行微信文章发布工作流。
-3. 确认进程常驻（例如使用 `pm2` 托管）。
+## 发布任务 needs_attention
 
-### 抓取结果质量不稳定
+这通常表示外部副作用的结果不确定。先到渠道后台确认草稿或发布结果，再决定人工处理；不要直接重复提交同一个发布动作。
 
-1. 普通网页建议配置 `providers.fetch.firecrawl.apiKey` 或
-   `providers.fetch.jina.apiKey`。
-2. 关键词搜索可以先用无需 key 的 `gdelt`、`hackernews`、`arxiv`，再按需加入
-   `brave-search`、`jina-search`、`tavily-search`、`exa-search` 或
-   `serper-search`。
-3. 调整数据源质量，避免低质量站点。
-4. 使用更适合长文本分析的 `providers.ai.model`。
-
-### 微信发布失败
-
-1. 检查 `providers.publish.weixin.appId` 与
-   `providers.publish.weixin.appSecret`。
-2. 检查公众号后台 IP 白名单。
-3. 检查模板中是否有超长内容或不合法 HTML。
-4. 先执行
-   `deno task article --dry-run`，确认抓取、摘要和模板渲染无误后再正式发布。
-
-### 想只看模板效果
-
-运行：
+## 验证代码
 
 ```bash
-deno task preview
+vp run verify
 ```
 
-生成的 HTML 位于 `src/temp/preview_weixin_*.html`。
-
-## 排查建议
-
-- 先手动触发 API，确认单次工作流可跑通。
-- 再启用 cron 与通知，观察完整链路。
-- 每次只改一组配置，便于定位问题。
+它会执行全仓检查、测试、Dashboard 类型检查和生产构建。

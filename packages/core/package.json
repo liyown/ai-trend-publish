@@ -1,0 +1,29 @@
+{
+  "name": "@trendpublish/core",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./application": "./src/application/index.ts",
+    "./config": "./src/config.ts",
+    "./logging": "./src/logging.ts",
+    "./node": "./src/node.ts",
+    "./observability": "./src/observability.ts",
+    "./test": "./src/test.ts",
+    "./utilities": "./src/utilities.ts",
+    "./workspace": "./src/workspace/index.ts"
+  },
+  "scripts": {
+    "check": "vp check",
+    "test": "vp test --root ../.. packages/core/src"
+  },
+  "dependencies": {
+    "@trendpublish/article": "workspace:*",
+    "@trendpublish/connectors": "workspace:*",
+    "@trendpublish/contracts": "workspace:*",
+    "@trendpublish/publishing": "workspace:*",
+    "@trendpublish/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2"
+  }
+}

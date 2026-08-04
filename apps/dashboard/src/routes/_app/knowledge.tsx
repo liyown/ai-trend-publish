@@ -1,0 +1,233 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  listKnowledgeBases,
+  createKnowledgeBase,
+  updateKnowledgeBase,
+  deleteKnowledgeBase,
+} from "#platform/api/knowledge-bases.ts";
+
+import { useEffect, useState } from "react";
+import { FileText, Plus, Upload } from "lucide-react";
+
+import { Button } from "#components/ui/button.tsx";
+import { Input } from "#components/ui/input.tsx";
+import { AppDialog, AppDialogFooter } from "#components/product/app-dialog.tsx";
+import { FormField } from "#components/product/form-field.tsx";
+import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
+import { Pagination } from "#components/ui/pagination.tsx";
+import { FormError } from "#components/product/form-error.tsx";
+import { PageGrid } from "#components/product/page-grid.tsx";
+import type { KnowledgeBase, SaveKnowledgeBasePayload } from "#platform/api/types.ts";
+
+const PAGE_SIZE = 20;
+
+export const knowledgeBasesKey = () => ["knowledge-bases"] as const;
+
+export function useKnowledgeBases(page = 1) {
+  return useQuery({
+    queryKey: [...knowledgeBasesKey(), page] as const,
+    queryFn: () => listKnowledgeBases(page, PAGE_SIZE),
+  });
+}
+
+export function useDeleteKnowledgeBase() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteKnowledgeBase(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: knowledgeBasesKey() }),
+  });
+}
+
+export function useSaveKnowledgeBase() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id?: string; body: SaveKnowledgeBasePayload }) =>
+      id ? updateKnowledgeBase(id, body) : createKnowledgeBase(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: knowledgeBasesKey() }),
+  });
+}
+
+export const Route = createFileRoute("/_app/knowledge")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    page: Number(search["page"] ?? 1) || 1,
+  }),
+  component: KnowledgePage,
+});
+
+const blank: SaveKnowledgeBasePayload = { name: "", enabled: true, documents: [] };
+
+function KnowledgePage() {
+  const { page } = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const { data } = useKnowledgeBases(page);
+  const save = useSaveKnowledgeBase();
+  const remove = useDeleteKnowledgeBase();
+  const [editing, setEditing] = useState<KnowledgeBase | "new" | null>(null);
+  const items = data?.items ?? [];
+  return (
+    <PageGrid>
+      <EntityList
+        title="知识库"
+        description="维护可重复使用的参考材料；抓取数据源只负责运行时获取动态内容。"
+        action={
+          <Button variant="primary" size="sm" onClick={() => setEditing("new")}>
+            <Plus className="size-4" />
+            新建知识库
+          </Button>
+        }
+        empty={!items.length}
+        pagination={
+          <Pagination
+            page={page}
+            pageSize={PAGE_SIZE}
+            total={data?.total ?? 0}
+            onChange={(p) => navigate({ search: { page: p } })}
+          />
+        }
+      >
+        {items.map((item) => (
+          <EntityRow
+            key={item.id}
+            title={item.name}
+            description={`${item.documents.length} 份参考文档`}
+            status={item.enabled ? "ready" : "disabled"}
+            onEdit={() => setEditing(item)}
+            onDelete={() => confirm(`删除"${item.name}"？`) && remove.mutate(item.id)}
+          />
+        ))}
+      </EntityList>
+      <KnowledgeDialog
+        value={editing}
+        open={Boolean(editing)}
+        onOpenChange={(open) => !open && setEditing(null)}
+        onSave={(body) =>
+          save.mutate(
+            { id: editing !== "new" ? editing!.id : undefined, body },
+            { onSuccess: () => setEditing(null) },
+          )
+        }
+        saving={save.isPending}
+        error={save.error}
+      />
+    </PageGrid>
+  );
+}
+
+function KnowledgeDialog({
+  value,
+  open,
+  onOpenChange,
+  onSave,
+  saving,
+  error,
+}: {
+  value: KnowledgeBase | "new" | null;
+  open: boolean;
+  onOpenChange(open: boolean): void;
+  onSave(body: SaveKnowledgeBasePayload): void;
+  saving: boolean;
+  error: unknown;
+}) {
+  const [form, setForm] = useState<SaveKnowledgeBasePayload>(blank);
+  useEffect(() => {
+    if (!value) return;
+    setForm(value === "new" ? blank : { ...value, revision: value.revision });
+  }, [value]);
+  const addFiles = async (files: FileList | null) => {
+    if (!files) return;
+    const documents = await Promise.all(
+      Array.from(files).map(async (file) => ({
+        title: file.name.replace(/\.(md|markdown|txt)$/i, ""),
+        fileName: file.name,
+        mediaType: file.type || "text/plain",
+        content: await file.text(),
+      })),
+    );
+    setForm((current) => ({ ...current, documents: [...current.documents, ...documents] }));
+  };
+  return (
+    <AppDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={value === "new" ? "新建知识库" : "编辑知识库"}
+      description="上传长期参考材料，供多个内容方案复用。"
+      size="wide"
+    >
+      <div className="grid gap-5">
+        <FormField label="名称" required>
+          <Input
+            value={form.name}
+            onChange={(event) => setForm({ ...form, name: event.target.value })}
+            placeholder="例如：AI 基础设施研究资料"
+          />
+        </FormField>
+        <section className="grid gap-3 border-t border-[var(--border)] pt-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-semibold">参考文档</h3>
+              <p className="mt-1 text-xs text-[var(--muted-strong)]">
+                当前支持 TXT 和 Markdown，单份文档最大 2 MB。
+              </p>
+            </div>
+            <label className="inline-flex min-h-8 cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border)] px-2.5 text-xs font-medium">
+              <Upload className="size-3.5" />
+              上传文档
+              <input
+                className="sr-only"
+                type="file"
+                multiple
+                accept=".txt,.md,.markdown,text/plain,text/markdown"
+                onChange={(event) => void addFiles(event.target.files)}
+              />
+            </label>
+          </div>
+          <div className="divide-y divide-[var(--border)] rounded-[var(--radius-sm)] border border-[var(--border)]">
+            {form.documents.length ? (
+              form.documents.map((document, index) => (
+                <div
+                  key={document.id ?? `${document.fileName}-${index}`}
+                  className="flex items-center gap-3 px-3 py-2.5"
+                >
+                  <FileText className="size-4 shrink-0 text-[var(--muted)]" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{document.title}</p>
+                    <p className="truncate text-xs text-[var(--muted)]">
+                      {document.fileName ?? `${document.content.length} 字符`}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() =>
+                      setForm({
+                        ...form,
+                        documents: form.documents.filter((_, itemIndex) => itemIndex !== index),
+                      })
+                    }
+                  >
+                    移除
+                  </Button>
+                </div>
+              ))
+            ) : (
+              <p className="px-3 py-8 text-center text-sm text-[var(--muted)]">尚未上传参考文档</p>
+            )}
+          </div>
+        </section>
+        <FormError error={error} />
+      </div>
+      <AppDialogFooter>
+        <Button onClick={() => onOpenChange(false)}>取消</Button>
+        <Button
+          variant="primary"
+          loading={saving}
+          disabled={!form.name.trim()}
+          onClick={() => onSave(form)}
+        >
+          保存
+        </Button>
+      </AppDialogFooter>
+    </AppDialog>
+  );
+}

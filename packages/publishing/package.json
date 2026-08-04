@@ -1,0 +1,19 @@
+{
+  "name": "@trendpublish/publishing",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "vp check",
+    "test": "vp test --root ../.. packages/publishing/src"
+  },
+  "dependencies": {
+    "@trendpublish/agent": "workspace:*",
+    "@trendpublish/article": "workspace:*",
+    "@trendpublish/connectors": "workspace:*",
+    "@trendpublish/contracts": "workspace:*",
+    "@trendpublish/runtime": "workspace:*"
+  }
+}

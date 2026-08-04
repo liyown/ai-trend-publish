@@ -1,0 +1,49 @@
+{
+  "name": "@trendpublish/dashboard",
+  "private": true,
+  "type": "module",
+  "imports": {
+    "#components/*": "./src/components/*",
+    "#hooks/*": "./src/hooks/*",
+    "#lib/*": "./src/lib/*",
+    "#platform/*": "./src/platform/*"
+  },
+  "scripts": {
+    "dev": "vp dev --config vite.config.ts --host 0.0.0.0",
+    "check": "vp check",
+    "test": "vp test --root . --config vite.config.ts",
+    "build": "vp build --config vite.config.ts",
+    "preview": "vp preview --config vite.config.ts",
+    "shadcn:info": "shadcn info --json"
+  },
+  "dependencies": {
+    "@gsap/react": "^2.1.2",
+    "@tanstack/react-query": "5.90.12",
+    "@tanstack/react-router": "^1.170.18",
+    "@tanstack/router-plugin": "^1.168.23",
+    "@trendpublish/contracts": "workspace:*",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
+    "gsap": "^3.13.0",
+    "lucide-react": "^0.561.0",
+    "motion": "^12.42.2",
+    "radix-ui": "^1.5.0",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "tailwind-merge": "^3.4.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.3.0",
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "6.0.2",
+    "shadcn": "^4.11.0",
+    "tailwindcss": "4.3.0",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "packageManager": "pnpm@10.24.0"
+}

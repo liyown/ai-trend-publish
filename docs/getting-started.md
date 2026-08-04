@@ -1,59 +1,30 @@
 # 快速开始
 
-## 1. 环境要求
+## 安装
 
-- Deno v2.0.0+
-- Node.js 18+（用于 VitePress 文档）
-
-## 2. 克隆项目
+需要 Node.js 24+、pnpm 10 和 Vite+ CLI `vp`。
 
 ```bash
-git clone https://github.com/liyown/ai-trend-publish
-cd ai-trend-publish
-```
-
-## 3. 初始化配置
-
-```bash
+vp install
 cp trendpublish.config.example.ts trendpublish.config.ts
+vp run doctor
+vp run dev
 ```
 
-至少先完成以下字段：
+服务地址为 `http://localhost:8000`，Dashboard 为 `http://localhost:8000/dashboard/`。
 
-- `server.apiKey`
-- `providers.ai.baseUrl`
-- `providers.ai.apiKey`
-- `providers.ai.model`
+## 建立第一个内容任务
 
-正式发布公众号时再配置：
+1. 在“连接”新建 `OpenAI Compatible` 连接，填写 API 地址、模型和 API Key，并测试连接。
+2. 在“内容身份”填写定位、受众、语气、质量标准和禁止话题。
+3. 在“知识库”添加长期参考材料；在“来源”配置 URL 或查询及其来源分组。
+4. 在“内容方案”选择 Agent 策略、支持 Tool Calling 的模型，并授权搜索、抓取、图片或增强工具。
+5. 创建自动化任务，可输入额外说明或主题后手动运行。
+6. 在“运行记录”查看研究、写作、评估、资源与构建检查点，在“内容库”查看成品。
 
-- `providers.publish.weixin.appId`
-- `providers.publish.weixin.appSecret`
+共享 ReAct Agent 自主决定工具调用顺序，并通过 `submit_master_content` 提交结构化结果。参数或内容校验失败会作为 observation 返回 Agent 修复，不进入人工审核。
 
-跑微信文章工作流时，至少配置一种抓取源：
-
-- `features.article.sources`
-- URL 对应的 `providers.fetch.*`
-
-最简单的数据源写法是 URL 列表：
-
-```ts
-features: {
-  article: {
-    renderer: {
-      promptProfile: "technology",
-    },
-    sources: [
-      "https://news.ycombinator.com/",
-      "social:https://x.com/OpenAIDevs",
-    ],
-  },
-},
-fetchGroups: {
-  default: ["auto"],
-  social: ["twitter"],
-},
-```
+文章来源中的事实引用使用 `[来源](evidence://证据ID)`。有效证据的文本摘录、时间段或页码必须通过校验；无法解析的引用会自动变成普通文本，不阻止生成成品。
 
 如果你想直接聚合自己维护的 RSS / Atom / JSON Feed，也可以把订阅地址直接放进
 `features.article.sources`：
@@ -78,78 +49,11 @@ fetchGroups: {
 先运行 `deno task article --dry-run`，确认当天产物里已经出现自定义 RSS 的文章，
 再继续接入正式发布链路。
 
-更多功能开关和必填项见 [配置说明](/configuration)。
+## 发布到微信公众号
 
-## 4. 本地启动
+1. 在“发布账号”新增账号，选择微信公众号和“微信公众号”直连接入方式，并在同一对话框填写设置与凭证。需要固定出口 IP 时，在“HTTP 代理地址”中填写住宅代理 URL。
+2. 在内容方案的“发布账号”步骤选择一个或多个账号；系统默认勾选“微信公众号图文”。
+3. 运行内容方案后，系统为每个账号启动独立渠道 ReAct 会话并校验 HTML/JSON，然后确定性上传素材并创建草稿。
+4. 也可以从内容库打开“发布”对话框，临时选择多个账号和发布类型。
 
-```bash
-# 检查配置是否完整
-deno task doctor
-
-# 启动主服务（含定时任务 + JSON-RPC 服务）
-deno task dev
-
-# 预览微信模板
-deno task preview
-
-# dry-run 跑一次微信文章流程，不真正发布
-deno task article --dry-run
-
-# 多账号矩阵 dry-run；不传账号时使用全部启用账号
-deno task article --matrix
-deno task article --matrix --account main,lab
-```
-
-默认会启动在 `http://localhost:8000`，并提供：
-
-- `GET /dashboard`：运行看板。
-- `GET /api/health`：本地服务健康检查。
-- `GET /api/config/summary`：dashboard 使用的脱敏配置摘要。
-- `POST /api/runs`：触发微信文章工作流。
-- `POST /api/runs/matrix`：触发多账号矩阵 dry-run。
-- `POST /api/workflow`：旧 JSON-RPC 兼容入口。
-
-## 5. Docker 启动
-
-也可以直接使用发布镜像：
-
-```bash
-mkdir -p config data/temp
-cp trendpublish.config.docker.example.ts config/trendpublish.config.ts
-docker compose up -d
-```
-
-Docker 会读取 `./config/trendpublish.config.ts`，dry-run 输出、运行状态和
-artifact 会写到 `./data/temp`，可通过 `/dashboard` 查看。发布镜像已经内置
-dashboard 构建产物，不需要在服务器上运行前端构建。更多部署细节见
-[部署文档](/deployment)。
-
-## 6. 触发一次工作流
-
-```bash
-curl -X POST http://localhost:8000/api/workflow \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer your-api-key" \
-  -d '{
-    "jsonrpc": "2.0",
-    "method": "triggerWorkflow",
-    "params": {
-      "workflowType": "weixin-article-workflow",
-      "dryRun": true
-    },
-    "id": 1
-}'
-```
-
-## 7. 文档开发（VitePress）
-
-```bash
-deno task docs
-deno task docs build
-```
-
-## 8. 构建当前平台二进制
-
-```bash
-deno task build
-```
+未选择账号时只生成可发布内容包。每个发布目的地独立执行；部分账号失败不会抹掉其他账号的成功结果。

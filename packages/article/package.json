@@ -1,0 +1,23 @@
+{
+  "name": "@trendpublish/article",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./application": "./src/application/index.ts"
+  },
+  "scripts": {
+    "check": "vp check",
+    "test": "vp test --root ../.. packages/article/src"
+  },
+  "dependencies": {
+    "@trendpublish/agent": "workspace:*",
+    "@trendpublish/connectors": "workspace:*",
+    "@trendpublish/contracts": "workspace:*",
+    "@trendpublish/runtime": "workspace:*",
+    "marked": "^4.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2"
+  }
+}

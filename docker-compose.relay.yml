@@ -3,12 +3,12 @@ services:
     image: ghcr.io/liyown/ai-trend-publish:latest
     container_name: trendpublish-weixin-relay
     restart: unless-stopped
-    command: ["deno", "task", "relay"]
+    command: ["vp", "run", "relay"]
     ports:
       - "8080:8080"
+    env_file:
+      - ./config/.env
     environment:
-      TRENDPUBLISH_CONFIG: /app/config/trendpublish.config.ts
-      TRENDPUBLISH_RUNTIME: docker
       PORT: "8080"
     volumes:
-      - ./config/trendpublish.config.ts:/app/config/trendpublish.config.ts:ro
+      - ./data:/app/data

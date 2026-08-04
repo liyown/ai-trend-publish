@@ -1,0 +1,30 @@
+{
+  "name": "ai-trend-publish",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@trendpublish/agent": "workspace:*",
+    "@trendpublish/article": "workspace:*",
+    "@trendpublish/connectors": "workspace:*",
+    "@trendpublish/contracts": "workspace:*",
+    "@trendpublish/core": "workspace:*",
+    "@trendpublish/ops": "workspace:*",
+    "@trendpublish/publishing": "workspace:*",
+    "@trendpublish/runtime": "workspace:*",
+    "@trendpublish/server": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2",
+    "tsx": "^4.22.4",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:",
+    "vitepress": "1.6.4",
+    "vitest": "catalog:",
+    "vue": "3.5.34",
+    "wrangler": "4.93.1"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "packageManager": "pnpm@10.24.0"
+}

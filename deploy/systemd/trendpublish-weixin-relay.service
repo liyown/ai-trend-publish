@@ -9,7 +9,7 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=/opt/ai-trend-publish
 Environment=PORT=8080
-ExecStart=/usr/bin/env deno task relay --config /opt/ai-trend-publish/config/trendpublish.config.ts
+ExecStart=/usr/bin/env vp run relay --config /opt/ai-trend-publish/config/trendpublish.config.ts
 Restart=always
 RestartSec=5
 KillSignal=SIGINT

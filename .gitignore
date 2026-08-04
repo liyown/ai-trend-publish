@@ -1,5 +1,6 @@
 node_modules
-dashboard/.vite/
+apps/dashboard/.vite/
+.pnpm-store/
 .env
 .dev.vars
 cloudflare-token.local
@@ -12,8 +13,6 @@ output
 temp
 .cursor
 *.bak
-*.exe
-
 # Build output
 dist/
 docs/.vitepress/dist/
@@ -24,10 +23,6 @@ docs/.vitepress/.temp/
 *-mac-arm64
 *-linux-x64
 *-linux-arm64
-
-# Deno
-.deno/
-deno.lock
 
 # IDE
 .vscode/
@@ -45,7 +40,6 @@ yarn-error.log*
 Thumbs.db
 
 # Environment variables
-.env
 trendpublish.config.ts
 config/trendpublish.config.ts
 .env.local
@@ -53,7 +47,6 @@ config/trendpublish.config.ts
 
 # Temp files
 temp/
-src/temp/
 data/temp/
 tmp/
 *.tmp

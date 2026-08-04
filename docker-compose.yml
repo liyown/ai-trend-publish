@@ -5,8 +5,7 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
-    environment:
-      TRENDPUBLISH_CONFIG: /app/config/trendpublish.config.ts
+    env_file:
+      - ./config/.env
     volumes:
-      - ./config/trendpublish.config.ts:/app/config/trendpublish.config.ts:ro
-      - ./data/temp:/app/src/temp
+      - ./data:/app/data

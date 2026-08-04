@@ -6,8 +6,8 @@ on:
       - main
     paths:
       - "docs/**"
-      - "deno.json"
-      - "deno.lock"
+      - "package.json"
+      - "pnpm-lock.yaml"
       - ".github/workflows/docs-pages.yml"
   workflow_dispatch:
 
@@ -28,13 +28,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Deno
-        uses: denoland/setup-deno@v2
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
         with:
-          deno-version: v2.7.14
+          node-version: 24
+          cache: true
+
+      - name: Install dependencies
+        run: vp install
 
       - name: Build docs
-        run: deno task docs build
+        run: vp run docs:build
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

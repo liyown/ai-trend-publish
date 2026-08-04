@@ -1,58 +1,33 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "trendpublish",
-  "main": "src/platform/cloudflare/worker.ts",
+  "main": "apps/server/src/platform/cloudflare/worker.ts",
   "compatibility_date": "2026-05-21",
   "compatibility_flags": ["nodejs_compat"],
   "alias": {
-    "@src/": "./src/",
-    "@zilla/logger": "./src/platform/cloudflare/shims/logger.ts",
-    "@zilla/logger-upstream": "./src/platform/cloudflare/shims/logger-upstream.ts",
-    "jsr:@deno-library/progress": "./src/platform/cloudflare/shims/progress.ts",
-    "npm:axios": "axios",
-    "npm:axios@1.8.3": "axios",
-    "npm:ejs": "ejs",
-    "npm:ejs@3.1.10": "ejs",
-    "npm:fast-xml-parser": "fast-xml-parser",
-    "npm:fast-xml-parser@5.0.9": "fast-xml-parser",
-    "npm:firecrawl": "firecrawl",
-    "npm:firecrawl@1.19.0": "firecrawl",
-    "npm:openai": "openai",
-    "npm:openai@4.87.3": "openai",
-    "npm:zod": "zod",
-    "npm:zod@3.23.8": "zod",
-    "npm:zod@3.25.76": "zod"
+    "@trendpublish/article/": "./packages/article/src/",
+    "@trendpublish/connectors/": "./packages/connectors/src/",
+    "@trendpublish/core/": "./packages/core/src/",
+    "@trendpublish/publishing/": "./packages/publishing/src/",
+    "@trendpublish/runtime/": "./packages/runtime/src/",
+    "@trendpublish/server/": "./apps/server/src/",
   },
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 1
+    "head_sampling_rate": 1,
   },
   "assets": {
     "directory": "./dist/dashboard",
-    "binding": "ASSETS"
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/dashboard", "/dashboard/*", "/api/*"],
   },
-  "kv_namespaces": [
-    {
-      "binding": "ARTICLE_RUNS",
-      "id": "edd51363baaf4e5fb55498cbce57cd5c"
-    }
-  ],
   "d1_databases": [
     {
       "binding": "ARTICLE_DB",
       "database_name": "trendpublish-article-db",
       "database_id": "83b6a1cc-954d-413b-9eb1-eaaf9159d059",
-      "migrations_dir": "migrations"
-    }
+      "migrations_dir": "migrations",
+    },
   ],
-  "triggers": {
-    "crons": ["*/5 * * * *"]
-  },
-  "workflows": [
-    {
-      "name": "weixin-article-workflow",
-      "binding": "WEIXIN_ARTICLE_WORKFLOW",
-      "class_name": "WeixinArticleCloudflareWorkflow"
-    }
-  ]
 }

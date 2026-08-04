@@ -16,4 +16,4 @@ Client 应保持纯粹：接收能力输入，构造一次请求，映射一次�
 
 请求执行器统一处理连接级 Headers、Query、Body 覆盖、认证保留字段和观测事件。调用方通过 `AbortSignal` 控制取消。
 
-新增 Connector 后，在本地和 Cloudflare 共用的 registry 中注册；如果它提供新的能力，还要在需要该能力的文章插件或渠道 Adapter 中注入类型化 Client。
+新增 Connector 后，在本地和 Cloudflare 共用的 registry 中注册；如果它提供 Agent 能力，还要增加窄 Tool Adapter，把类型化 Client 映射为带 JSON Schema 的工具。内容方案必须明确授权连接，Agent 不会自动获得所有已启用连接。

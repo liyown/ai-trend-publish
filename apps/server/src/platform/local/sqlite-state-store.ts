@@ -25,11 +25,14 @@ import {
   type TaskClaimInput,
   type TaskRecord,
   type TaskStore,
+  type NewRunActivity,
+  type RunListFilter,
+  type RunStore,
 } from "@trendpublish/runtime";
+import type { RunActivity, RunRecord, RunSession } from "@trendpublish/contracts";
 
-const SCHEMA_FILE = resolve(
-  import.meta.dirname,
-  "../../../../../migrations/0001_modular_runtime.sql",
+const SCHEMA_FILES = ["0001_modular_runtime.sql", "0002_react_runs.sql"].map((file) =>
+  resolve(import.meta.dirname, "../../../../../migrations", file),
 );
 
 export class SQLiteStateStore implements WorkspaceRepository {
@@ -42,7 +45,7 @@ export class SQLiteStateStore implements WorkspaceRepository {
   }
 
   ensureSchema(): Promise<void> {
-    this.db.exec(readFileSync(SCHEMA_FILE, "utf8"));
+    for (const file of SCHEMA_FILES) this.db.exec(readFileSync(file, "utf8"));
     return Promise.resolve();
   }
 
@@ -172,6 +175,214 @@ export class SQLiteStateStore implements WorkspaceRepository {
     return Promise.resolve();
   }
 
+  getSchemaVersion(key: string): Promise<string | null> {
+    const row = this.db
+      .prepare("SELECT version FROM internal_schema_versions WHERE name = ?")
+      .get(key) as { version: number | string } | undefined;
+    return Promise.resolve(row ? String(row.version) : null);
+  }
+
+  setSchemaVersion(key: string, version: string, completedAt: string): Promise<void> {
+    this.db
+      .prepare(
+        `INSERT INTO internal_schema_versions(name, version, updated_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(name) DO UPDATE SET version = excluded.version, updated_at = excluded.updated_at`,
+      )
+      .run(key, version, completedAt);
+    return Promise.resolve();
+  }
+
+  createRun(run: RunRecord): Promise<RunRecord> {
+    this.db
+      .prepare(
+        `INSERT INTO runtime_runs(id, kind, status, plan_id, package_id, run_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        run.id,
+        run.kind,
+        run.status,
+        run.planId ?? null,
+        run.packageId ?? null,
+        JSON.stringify(run),
+        run.createdAt,
+        run.updatedAt,
+      );
+    return Promise.resolve(structuredClone(run));
+  }
+
+  getRun(id: string): Promise<RunRecord | null> {
+    const row = this.db.prepare("SELECT run_json FROM runtime_runs WHERE id = ?").get(id) as
+      | { run_json: string }
+      | undefined;
+    return Promise.resolve(row ? parseJson<RunRecord>(row.run_json) : null);
+  }
+
+  listRuns(filter: RunListFilter = {}, limit = 100, offset = 0): Promise<RunRecord[]> {
+    const rows = this.db
+      .prepare("SELECT run_json FROM runtime_runs ORDER BY created_at DESC LIMIT ? OFFSET ?")
+      .all(limit, offset) as Array<{ run_json: string }>;
+    return Promise.resolve(
+      rows
+        .map((row) => parseJson<RunRecord>(row.run_json))
+        .filter((run) => !filter.planId || run.planId === filter.planId)
+        .filter((run) => !filter.kind || run.kind === filter.kind)
+        .filter((run) => !filter.status || run.status === filter.status),
+    );
+  }
+
+  updateRun(run: RunRecord): Promise<RunRecord> {
+    const result = this.db
+      .prepare(
+        `UPDATE runtime_runs SET status = ?, plan_id = ?, package_id = ?, run_json = ?, updated_at = ?
+         WHERE id = ?`,
+      )
+      .run(
+        run.status,
+        run.planId ?? null,
+        run.packageId ?? null,
+        JSON.stringify(run),
+        run.updatedAt,
+        run.id,
+      );
+    if (!result.changes) throw new Error(`运行不存在：${run.id}`);
+    return Promise.resolve(structuredClone(run));
+  }
+
+  createSession(session: RunSession): Promise<RunSession> {
+    this.db
+      .prepare(
+        `INSERT INTO runtime_run_sessions
+         (id, run_id, kind, status, destination_id, session_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        session.id,
+        session.runId,
+        session.kind,
+        session.status,
+        session.destination?.destinationId ?? null,
+        JSON.stringify(session),
+        session.createdAt,
+        session.updatedAt,
+      );
+    return Promise.resolve(structuredClone(session));
+  }
+
+  getSession(id: string): Promise<RunSession | null> {
+    const row = this.db
+      .prepare("SELECT session_json FROM runtime_run_sessions WHERE id = ?")
+      .get(id) as { session_json: string } | undefined;
+    return Promise.resolve(row ? parseJson<RunSession>(row.session_json) : null);
+  }
+
+  listSessions(runId: string): Promise<RunSession[]> {
+    const rows = this.db
+      .prepare(
+        "SELECT session_json FROM runtime_run_sessions WHERE run_id = ? ORDER BY created_at ASC",
+      )
+      .all(runId) as Array<{ session_json: string }>;
+    return Promise.resolve(rows.map((row) => parseJson<RunSession>(row.session_json)));
+  }
+
+  updateSession(session: RunSession): Promise<RunSession> {
+    const result = this.db
+      .prepare(
+        `UPDATE runtime_run_sessions SET status = ?, destination_id = ?, session_json = ?, updated_at = ?
+         WHERE id = ?`,
+      )
+      .run(
+        session.status,
+        session.destination?.destinationId ?? null,
+        JSON.stringify(session),
+        session.updatedAt,
+        session.id,
+      );
+    if (!result.changes) throw new Error(`运行会话不存在：${session.id}`);
+    return Promise.resolve(structuredClone(session));
+  }
+
+  appendActivity(input: NewRunActivity): Promise<RunActivity> {
+    const key = activityKey(input);
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const existing = this.db
+        .prepare("SELECT id FROM runtime_run_activities WHERE run_id = ? AND activity_key = ?")
+        .get(input.runId, key) as { id: string } | undefined;
+      const sequence = this.nextActivitySequence(input.runId);
+      const activity: RunActivity = {
+        ...structuredClone(input),
+        id: existing?.id ?? `activity-${input.runId}-${sequence}`,
+        sequence,
+      };
+      if (existing) {
+        this.db
+          .prepare(
+            `UPDATE runtime_run_activities
+             SET sequence = ?, kind = ?, status = ?, activity_json = ?, updated_at = ? WHERE id = ?`,
+          )
+          .run(
+            activity.sequence,
+            activity.kind,
+            activity.status,
+            JSON.stringify(activity),
+            activity.updatedAt,
+            activity.id,
+          );
+      } else {
+        this.db
+          .prepare(
+            `INSERT INTO runtime_run_activities
+             (id, run_id, session_id, sequence, activity_key, kind, status, activity_json, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            activity.id,
+            activity.runId,
+            activity.sessionId,
+            activity.sequence,
+            key,
+            activity.kind,
+            activity.status,
+            JSON.stringify(activity),
+            activity.updatedAt,
+          );
+      }
+      this.db.exec("COMMIT");
+      return Promise.resolve(activity);
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  listActivities(runId: string, sessionId?: string, afterSequence = 0): Promise<RunActivity[]> {
+    const rows = sessionId
+      ? (this.db
+          .prepare(
+            `SELECT activity_json FROM runtime_run_activities
+             WHERE run_id = ? AND session_id = ? AND sequence > ? ORDER BY sequence ASC`,
+          )
+          .all(runId, sessionId, afterSequence) as Array<{ activity_json: string }>)
+      : (this.db
+          .prepare(
+            `SELECT activity_json FROM runtime_run_activities
+             WHERE run_id = ? AND sequence > ? ORDER BY sequence ASC`,
+          )
+          .all(runId, afterSequence) as Array<{ activity_json: string }>);
+    return Promise.resolve(rows.map((row) => parseJson<RunActivity>(row.activity_json)));
+  }
+
+  private nextActivitySequence(runId: string): number {
+    const row = this.db
+      .prepare(
+        "SELECT COALESCE(MAX(sequence), 0) AS sequence FROM runtime_run_activities WHERE run_id = ?",
+      )
+      .get(runId) as { sequence: number };
+    return row.sequence + 1;
+  }
+
   createJob<TInput, TOutput = unknown>(
     job: JobRecord<TInput, TOutput>,
   ): Promise<JobRecord<TInput, TOutput>> {
@@ -192,16 +403,16 @@ export class SQLiteStateStore implements WorkspaceRepository {
     return Promise.resolve(row ? parseJson<JobRecord<TInput, TOutput>>(row.job_json) : null);
   }
 
-  listJobs(type?: string, limit = 100): Promise<JobRecord[]> {
+  listJobs(type?: string, limit = 100, offset = 0): Promise<JobRecord[]> {
     const rows = type
       ? (this.db
           .prepare(
-            "SELECT job_json FROM runtime_jobs WHERE type = ? ORDER BY created_at DESC LIMIT ?",
+            "SELECT job_json FROM runtime_jobs WHERE type = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
           )
-          .all(type, limit) as Array<{ job_json: string }>)
+          .all(type, limit, offset) as Array<{ job_json: string }>)
       : (this.db
-          .prepare("SELECT job_json FROM runtime_jobs ORDER BY created_at DESC LIMIT ?")
-          .all(limit) as Array<{ job_json: string }>);
+          .prepare("SELECT job_json FROM runtime_jobs ORDER BY created_at DESC LIMIT ? OFFSET ?")
+          .all(limit, offset) as Array<{ job_json: string }>);
     return Promise.resolve(rows.map((row) => parseJson<JobRecord>(row.job_json)));
   }
 
@@ -389,9 +600,28 @@ export function asJobStore(store: SQLiteStateStore): JobStore {
   return {
     create: (job) => store.createJob(job),
     get: (id) => store.getJob(id),
-    list: (type, limit) => store.listJobs(type, limit),
+    list: (type, limit, offset) => store.listJobs(type, limit, offset),
     claim: (input) => store.claimJob(input),
     update: (job) => store.updateJob(job),
+  };
+}
+
+export function asRunStore(store: SQLiteStateStore): RunStore {
+  return {
+    getSchemaVersion: (key) => store.getSchemaVersion(key),
+    setSchemaVersion: (key, version, completedAt) =>
+      store.setSchemaVersion(key, version, completedAt),
+    createRun: (run) => store.createRun(run),
+    getRun: (id) => store.getRun(id),
+    listRuns: (filter, limit, offset) => store.listRuns(filter, limit, offset),
+    updateRun: (run) => store.updateRun(run),
+    createSession: (session) => store.createSession(session),
+    getSession: (id) => store.getSession(id),
+    listSessions: (runId) => store.listSessions(runId),
+    updateSession: (session) => store.updateSession(session),
+    appendActivity: (activity) => store.appendActivity(activity),
+    listActivities: (runId, sessionId, afterSequence) =>
+      store.listActivities(runId, sessionId, afterSequence),
   };
 }
 
@@ -440,4 +670,8 @@ function decideTaskClaim<T>(current: TaskRecord<T> | null, input: TaskClaimInput
 
 function parseJson<T = unknown>(value: string): T {
   return JSON.parse(value) as T;
+}
+
+function activityKey(activity: NewRunActivity): string {
+  return `${activity.sessionId}:${activity.taskId ?? activity.kind}:${activity.attempt ?? 1}`;
 }

@@ -1,5 +1,5 @@
 import { apiJson, mutation } from "./http.ts";
-import type { Automation, SaveAutomationPayload, JobRecord } from "./types.ts";
+import type { Automation, SaveAutomationPayload, JobRecord, RunRecord } from "./types.ts";
 import type { PageResult } from "./content-plans.ts";
 
 export const listAutomations = (page = 1, pageSize = 20) =>
@@ -18,4 +18,8 @@ export const deleteAutomation = (id: string) =>
   mutation<{ success: boolean }>(`/api/automations/${encodeURIComponent(id)}`, "DELETE");
 
 export const startAutomationRun = (id: string, body: { requestedTopic?: string } = {}) =>
-  mutation<{ job: JobRecord }>(`/api/automation-runs/${encodeURIComponent(id)}`, "POST", body);
+  mutation<{ job: JobRecord; run: RunRecord }>(
+    `/api/automations/${encodeURIComponent(id)}/run`,
+    "POST",
+    body,
+  );

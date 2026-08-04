@@ -9,13 +9,14 @@ export function assertWorkspace(workspace: WorkspaceSnapshot): void {
     "sourceCollections",
     "contentPlans",
     "channelAccounts",
-    "publishTargets",
     "contentPackages",
     "reviewRequests",
     "publications",
     "jobs",
     "connections",
     "connectorDefinitions",
+    "contentPlanTemplates",
+    "publicationTypeProfiles",
   ] as const;
   const missing = required.filter((key) => !Array.isArray(workspace[key]));
   if (missing.length) throw new Error(`Dashboard 与 API 版本不一致：缺少 ${missing.join(", ")}`);

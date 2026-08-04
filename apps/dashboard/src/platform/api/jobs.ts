@@ -5,7 +5,10 @@ import { consumeSse, isEventStreamContentType } from "./sse.ts";
 import type { JobRecord, TaskRecord, RuntimeEvent } from "./types.ts";
 import { JobType } from "@trendpublish/contracts";
 
-export const listJobs = () => apiJson<{ jobs: JobRecord[] }>("/api/jobs");
+export const listJobs = (page = 1, pageSize = 20) =>
+  apiJson<{ items: JobRecord[]; total: number; page: number; pageSize: number }>(
+    `/api/jobs?page=${page}&pageSize=${pageSize}`,
+  );
 
 export const getJob = (jobId: string) =>
   apiJson<{ job: JobRecord; tasks: TaskRecord[] }>(`/api/jobs/${encodeURIComponent(jobId)}`);

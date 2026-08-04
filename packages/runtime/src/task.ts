@@ -58,6 +58,8 @@ export interface TaskSpec<T> {
   effect?: TaskEffect;
   optional?: boolean;
   fallback?: (error: unknown) => T | Promise<T>;
+  /** Executes with lifecycle events but without writing input or output to the Task checkpoint store. */
+  transient?: boolean;
 }
 
 export interface TaskContext {

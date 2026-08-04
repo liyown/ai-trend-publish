@@ -1,5 +1,4 @@
-import { deepStrictEqual, equal } from "node:assert/strict";
-import { test } from "vite-plus/test";
+import { expect, test } from "vite-plus/test";
 import { RuntimeEventHub } from "./events.ts";
 
 test("runtime event hub filters and replays bounded job events", () => {
@@ -16,13 +15,10 @@ test("runtime event hub filters and replays bounded job events", () => {
   hub.publish({ type: "task.succeeded", jobId: "job-1" });
   unsubscribe();
 
-  deepStrictEqual(received, ["job.started", "model.response.delta", "task.succeeded"]);
+  expect(received).toEqual(["job.started", "model.response.delta", "task.succeeded"]);
   const replay = hub.recent({ jobId: "job-1", afterId: "2" });
-  deepStrictEqual(
-    replay.map((event) => event.type),
-    ["model.response.delta", "task.succeeded"],
-  );
-  equal(replay[0]?.occurredAt, "2026-07-18T12:00:00.000Z");
+  expect(replay.map((event) => event.type)).toEqual(["model.response.delta", "task.succeeded"]);
+  expect(replay[0]?.occurredAt).toBe("2026-07-18T12:00:00.000Z");
 });
 
 test("runtime event listeners cannot break the publisher", () => {
@@ -34,6 +30,6 @@ test("runtime event listeners cannot break the publisher", () => {
 
   const event = hub.publish({ type: "task.started", jobId: "job-safe" });
 
-  equal(event.type, "task.started");
-  equal(errors.length, 1);
+  expect(event.type).toBe("task.started");
+  expect(errors.length).toBe(1);
 });

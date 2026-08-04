@@ -4,6 +4,8 @@ export interface RuntimeEvent<T = unknown> {
   occurredAt: string;
   jobId?: string;
   taskId?: string;
+  runId?: string;
+  sessionId?: string;
   data?: T;
 }
 
@@ -11,11 +13,15 @@ export interface RuntimeEventDraft<T = unknown> {
   type: string;
   jobId?: string;
   taskId?: string;
+  runId?: string;
+  sessionId?: string;
   data?: T;
 }
 
 export interface RuntimeEventFilter {
   jobId?: string;
+  runId?: string;
+  sessionId?: string;
   afterId?: string;
 }
 
@@ -59,6 +65,8 @@ export class RuntimeEventHub implements RuntimeEventSource {
       occurredAt: (this.options.now ?? (() => new Date()))().toISOString(),
       ...(draft.jobId ? { jobId: draft.jobId } : {}),
       ...(draft.taskId ? { taskId: draft.taskId } : {}),
+      ...(draft.runId ? { runId: draft.runId } : {}),
+      ...(draft.sessionId ? { sessionId: draft.sessionId } : {}),
       ...(draft.data === undefined ? {} : { data: structuredClone(draft.data) }),
     };
     this.events.push(event);
@@ -90,6 +98,8 @@ export class RuntimeEventHub implements RuntimeEventSource {
 
 function matches(event: RuntimeEvent, filter?: RuntimeEventFilter): boolean {
   if (filter?.jobId && event.jobId !== filter.jobId) return false;
+  if (filter?.runId && event.runId !== filter.runId) return false;
+  if (filter?.sessionId && event.sessionId !== filter.sessionId) return false;
   if (filter?.afterId && compareEventIds(event.id, filter.afterId) <= 0) return false;
   return true;
 }

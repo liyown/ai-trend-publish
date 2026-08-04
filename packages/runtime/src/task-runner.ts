@@ -10,12 +10,14 @@ import {
   type TaskStore,
 } from "./task.ts";
 import { describeUnknown, fingerprint } from "./value.ts";
+import type { RunTaskActivityObserver } from "./run.ts";
 
 export interface TaskRunnerOptions {
   leaseMs?: number;
   now?: () => Date;
   createSignal?: (taskId: string) => AbortSignal;
   events?: RuntimeEventPublisher;
+  activities?: RunTaskActivityObserver;
 }
 
 export class TaskRunner {
@@ -23,6 +25,7 @@ export class TaskRunner {
   private readonly now: () => Date;
   private readonly createSignal: (taskId: string) => AbortSignal;
   private readonly events?: RuntimeEventPublisher;
+  private readonly activities?: RunTaskActivityObserver;
 
   constructor(
     private readonly store: TaskStore,
@@ -32,6 +35,7 @@ export class TaskRunner {
     this.now = options.now ?? (() => new Date());
     this.createSignal = options.createSignal ?? (() => new AbortController().signal);
     this.events = options.events;
+    this.activities = options.activities;
   }
 
   forJob(jobId: string): TaskContext {
@@ -66,6 +70,7 @@ export class TaskRunner {
     execute: (signal: AbortSignal, task: TaskContext) => Promise<T>,
   ): Promise<T> {
     const taskId = joinTaskId(prefix, normalizeTaskId(spec.id));
+    if (spec.transient) return await this.runTransient(jobId, taskId, spec, execute);
     const taskFingerprint = await fingerprint({ version: spec.version, input: spec.input });
     const now = this.now().toISOString();
     const claim = await this.store.claim<T>({
@@ -96,11 +101,29 @@ export class TaskRunner {
       taskId,
       data: { version: spec.version, attempt: claim.record.attempt, effect: claim.record.effect },
     });
+    await this.activities?.onTaskActivity({
+      jobId,
+      taskId,
+      attempt: claim.record.attempt,
+      effect: claim.record.effect,
+      input: spec.input,
+      status: "running",
+      occurredAt: now,
+    });
 
     try {
       const output = await execute(this.createSignal(taskId), this.createContext(jobId, taskId));
       await this.store.succeed(jobId, taskId, output, this.now().toISOString());
       this.publish({ type: "task.succeeded", jobId, taskId });
+      await this.activities?.onTaskActivity({
+        jobId,
+        taskId,
+        attempt: claim.record.attempt,
+        effect: claim.record.effect,
+        output,
+        status: "succeeded",
+        occurredAt: this.now().toISOString(),
+      });
       return output;
     } catch (error) {
       const message = errorMessage(error);
@@ -110,16 +133,122 @@ export class TaskRunner {
       ) {
         await this.store.markUnknown(jobId, taskId, message, this.now().toISOString());
         this.publish({ type: "task.unknown", jobId, taskId, data: { error: message } });
+        await this.activities?.onTaskActivity({
+          jobId,
+          taskId,
+          attempt: claim.record.attempt,
+          effect: claim.record.effect,
+          error: message,
+          status: "needs_attention",
+          occurredAt: this.now().toISOString(),
+        });
         throw new TaskNeedsAttentionError(jobId, taskId, message);
       }
       if (spec.optional && spec.fallback) {
         const output = await spec.fallback(error);
         await this.store.degrade(jobId, taskId, output, message, this.now().toISOString());
         this.publish({ type: "task.degraded", jobId, taskId, data: { error: message } });
+        await this.activities?.onTaskActivity({
+          jobId,
+          taskId,
+          attempt: claim.record.attempt,
+          effect: claim.record.effect,
+          output,
+          error: message,
+          status: "succeeded",
+          occurredAt: this.now().toISOString(),
+        });
         return output;
       }
       await this.store.fail(jobId, taskId, message, this.now().toISOString());
       this.publish({ type: "task.failed", jobId, taskId, data: { error: message } });
+      await this.activities?.onTaskActivity({
+        jobId,
+        taskId,
+        attempt: claim.record.attempt,
+        effect: claim.record.effect,
+        error: message,
+        status: "failed",
+        occurredAt: this.now().toISOString(),
+      });
+      throw error;
+    }
+  }
+
+  private async runTransient<T>(
+    jobId: string,
+    taskId: string,
+    spec: TaskSpec<T>,
+    execute: (signal: AbortSignal, task: TaskContext) => Promise<T>,
+  ): Promise<T> {
+    const effect = spec.effect ?? TaskEffect.Pure;
+    if (effect === TaskEffect.Unsafe) {
+      throw new Error(`临时任务 ${taskId} 不能执行不可安全重试的外部副作用`);
+    }
+    const attempt = 1;
+    const startedAt = this.now().toISOString();
+    this.publish({
+      type: "task.started",
+      jobId,
+      taskId,
+      data: { version: spec.version, attempt, effect, transient: true },
+    });
+    await this.activities?.onTaskActivity({
+      jobId,
+      taskId,
+      attempt,
+      effect,
+      status: "running",
+      occurredAt: startedAt,
+    });
+    try {
+      const output = await execute(this.createSignal(taskId), this.createContext(jobId, taskId));
+      this.publish({ type: "task.succeeded", jobId, taskId, data: { transient: true } });
+      await this.activities?.onTaskActivity({
+        jobId,
+        taskId,
+        attempt,
+        effect,
+        status: "succeeded",
+        occurredAt: this.now().toISOString(),
+      });
+      return output;
+    } catch (error) {
+      const message = errorMessage(error);
+      if (spec.optional && spec.fallback) {
+        const output = await spec.fallback(error);
+        this.publish({
+          type: "task.degraded",
+          jobId,
+          taskId,
+          data: { error: message, transient: true },
+        });
+        await this.activities?.onTaskActivity({
+          jobId,
+          taskId,
+          attempt,
+          effect,
+          error: message,
+          status: "succeeded",
+          occurredAt: this.now().toISOString(),
+        });
+        return output;
+      }
+      this.publish({
+        type: "task.failed",
+        jobId,
+        taskId,
+        data: { error: message, transient: true },
+      });
+      await this.activities?.onTaskActivity({
+        jobId,
+        taskId,
+        attempt,
+        effect,
+        error: message,
+        status: "failed",
+        occurredAt: this.now().toISOString(),
+      });
       throw error;
     }
   }

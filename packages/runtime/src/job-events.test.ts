@@ -1,5 +1,4 @@
-import { deepStrictEqual, equal } from "node:assert/strict";
-import { test } from "vite-plus/test";
+import { expect, test } from "vite-plus/test";
 import { RuntimeEventHub } from "./events.ts";
 import { EventedJobStore, MemoryJobStore, createJob } from "./job.ts";
 
@@ -9,12 +8,11 @@ test("evented job store publishes creation and status changes", async () => {
   const created = await jobs.create(createJob("article.generate", { planId: "plan" }));
   await jobs.claim({ id: created.id, type: created.type, now: new Date().toISOString() });
 
-  deepStrictEqual(
-    events.recent({ jobId: created.id }).map((event) => event.type),
-    ["job.created", "job.status.changed"],
-  );
-  equal(
+  expect(events.recent({ jobId: created.id }).map((event) => event.type)).toEqual([
+    "job.created",
+    "job.status.changed",
+  ]);
+  expect(
     (events.recent({ jobId: created.id })[1]?.data as { status?: string } | undefined)?.status,
-    "running",
-  );
+  ).toBe("running");
 });

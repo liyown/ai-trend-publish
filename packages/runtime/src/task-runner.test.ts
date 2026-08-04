@@ -1,5 +1,4 @@
-import { deepStrictEqual, equal, rejects } from "node:assert/strict";
-import { test } from "vite-plus/test";
+import { expect, test } from "vite-plus/test";
 import { MemoryTaskStore } from "./memory-task-store.ts";
 import { TaskRunner } from "./task-runner.ts";
 import {
@@ -14,16 +13,15 @@ test("completed tasks replay without executing again", async () => {
   let calls = 0;
   const execute = async () => ({ value: ++calls });
 
-  deepStrictEqual(await task.run(spec({ value: 1 }), execute), { value: 1 });
-  deepStrictEqual(await task.run(spec({ value: 1 }), execute), { value: 1 });
-  equal(calls, 1);
+  expect(await task.run(spec({ value: 1 }), execute)).toEqual({ value: 1 });
+  expect(await task.run(spec({ value: 1 }), execute)).toEqual({ value: 1 });
+  expect(calls).toBe(1);
 });
 
 test("task fingerprint rejects changed input under the same task id", async () => {
   const task = new TaskRunner(new MemoryTaskStore()).forJob("job-1");
   await task.run(spec({ value: 1 }), async () => "first");
-  await rejects(
-    () => task.run(spec({ value: 2 }), async () => "second"),
+  await expect(task.run(spec({ value: 2 }), async () => "second")).rejects.toBeInstanceOf(
     TaskFingerprintConflictError,
   );
 });
@@ -38,16 +36,15 @@ test("optional task failure is checkpointed as degraded", async () => {
     fallback: () => "fallback",
   };
 
-  equal(
+  expect(
     await task.run(optional, async () => {
       calls += 1;
       throw new Error("image provider unavailable");
     }),
-    "fallback",
-  );
-  equal(await task.run(optional, async () => "unexpected"), "fallback");
-  equal(calls, 1);
-  equal((await store.get("job-1", "example"))?.status, "degraded");
+  ).toBe("fallback");
+  expect(await task.run(optional, async () => "unexpected")).toBe("fallback");
+  expect(calls).toBe(1);
+  expect((await store.get("job-1", "example"))?.status).toBe("degraded");
 });
 
 test("unsafe unknown outcome is never replayed as a retry", async () => {
@@ -55,19 +52,36 @@ test("unsafe unknown outcome is never replayed as a retry", async () => {
   const task = new TaskRunner(store).forJob("job-1");
   let calls = 0;
 
-  await rejects(
-    () =>
-      task.run({ ...spec({ package: "p1" }), effect: "unsafe" }, async () => {
-        calls += 1;
-        throw new UnknownTaskOutcomeError("create draft timed out");
-      }),
-    TaskNeedsAttentionError,
-  );
-  await rejects(
-    () => task.run({ ...spec({ package: "p1" }), effect: "unsafe" }, async () => "duplicate"),
-    TaskNeedsAttentionError,
-  );
-  equal(calls, 1);
+  await expect(
+    task.run({ ...spec({ package: "p1" }), effect: "unsafe" }, async () => {
+      calls += 1;
+      throw new UnknownTaskOutcomeError("create draft timed out");
+    }),
+  ).rejects.toBeInstanceOf(TaskNeedsAttentionError);
+  await expect(
+    task.run({ ...spec({ package: "p1" }), effect: "unsafe" }, async () => "duplicate"),
+  ).rejects.toBeInstanceOf(TaskNeedsAttentionError);
+  expect(calls).toBe(1);
+});
+
+test("transient tasks stream lifecycle without persisting input or output", async () => {
+  const store = new MemoryTaskStore();
+  const activities: unknown[] = [];
+  const task = new TaskRunner(store, {
+    activities: {
+      async onTaskActivity(activity) {
+        activities.push(activity);
+      },
+    },
+  }).forJob("job-1");
+  let calls = 0;
+  const transient = { ...spec({ prompt: "private" }), transient: true };
+
+  expect(await task.run(transient, async () => `raw-${++calls}`)).toBe("raw-1");
+  expect(await task.run(transient, async () => `raw-${++calls}`)).toBe("raw-2");
+  expect(await store.get("job-1", "example")).toBeNull();
+  expect(JSON.stringify(activities)).not.toContain("private");
+  expect(JSON.stringify(activities)).not.toContain("raw-");
 });
 
 function spec(input: unknown) {

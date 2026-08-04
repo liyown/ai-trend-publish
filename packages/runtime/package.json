@@ -7,6 +7,9 @@
   },
   "scripts": {
     "check": "vp check",
-    "test": "vp test"
+    "test": "vp test --root ../.. packages/runtime/src"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2"
   }
 }

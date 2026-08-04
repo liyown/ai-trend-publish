@@ -1,10 +1,14 @@
 import { JobStatus } from "./constants.ts";
 import type { RuntimeEventPublisher } from "./events.ts";
+import type { RunManager } from "./run.ts";
 
 export { JobStatus } from "./constants.ts";
 
 export interface JobRecord<TInput = unknown, TOutput = unknown> {
   id: string;
+  runId?: string;
+  sessionId?: string;
+  parentJobId?: string;
   type: string;
   status: JobStatus;
   input: TInput;
@@ -23,7 +27,7 @@ export interface JobStore {
     job: JobRecord<TInput, TOutput>,
   ): Promise<JobRecord<TInput, TOutput>>;
   get<TInput = unknown, TOutput = unknown>(id: string): Promise<JobRecord<TInput, TOutput> | null>;
-  list(type?: string, limit?: number): Promise<JobRecord[]>;
+  list(type?: string, limit?: number, offset?: number): Promise<JobRecord[]>;
   /** Atomically grants the right to execute a resumable job. */
   claim<TInput = unknown, TOutput = unknown>(
     input: JobClaimInput,
@@ -57,12 +61,14 @@ export class EventedJobStore implements JobStore {
   constructor(
     private readonly store: JobStore,
     private readonly events: RuntimeEventPublisher,
+    private readonly runs?: Pick<RunManager, "onJobChanged">,
   ) {}
 
   async create<TInput, TOutput = unknown>(
     job: JobRecord<TInput, TOutput>,
   ): Promise<JobRecord<TInput, TOutput>> {
     const created = await this.store.create(job);
+    await this.runs?.onJobChanged(created);
     this.publish("job.created", created);
     return created;
   }
@@ -71,8 +77,8 @@ export class EventedJobStore implements JobStore {
     return this.store.get(id);
   }
 
-  list(type?: string, limit?: number): Promise<JobRecord[]> {
-    return this.store.list(type, limit);
+  list(type?: string, limit?: number, offset?: number): Promise<JobRecord[]> {
+    return this.store.list(type, limit, offset);
   }
 
   async claim<TInput = unknown, TOutput = unknown>(
@@ -80,6 +86,7 @@ export class EventedJobStore implements JobStore {
   ): Promise<JobClaim<TInput, TOutput>> {
     const claim = await this.store.claim<TInput, TOutput>(input);
     if (claim.kind === JobClaimKind.Claimed) {
+      await this.runs?.onJobChanged(claim.record);
       this.publish("job.status.changed", claim.record, {
         previousStatus: claim.previousStatus,
       });
@@ -92,6 +99,7 @@ export class EventedJobStore implements JobStore {
   ): Promise<JobRecord<TInput, TOutput>> {
     const previous = await this.store.get(job.id);
     const updated = await this.store.update(job);
+    await this.runs?.onJobChanged(updated);
     this.publish(
       previous?.status === updated.status ? "job.updated" : "job.status.changed",
       updated,
@@ -111,7 +119,11 @@ export class EventedJobStore implements JobStore {
         status: job.status,
         previousStatus: extra.previousStatus,
         updatedAt: job.updatedAt,
+        runId: job.runId,
+        sessionId: job.sessionId,
       },
+      runId: job.runId,
+      sessionId: job.sessionId,
     });
   }
 }
@@ -136,12 +148,12 @@ export class MemoryJobStore implements JobStore {
     return Promise.resolve(job ? (structuredClone(job) as JobRecord<TInput, TOutput>) : null);
   }
 
-  list(type?: string, limit = 100): Promise<JobRecord[]> {
+  list(type?: string, limit = 100, offset = 0): Promise<JobRecord[]> {
     return Promise.resolve(
       [...this.jobs.values()]
         .filter((job) => !type || job.type === type)
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-        .slice(0, limit)
+        .slice(offset, offset + limit)
         .map((job) => structuredClone(job)),
     );
   }
@@ -174,10 +186,12 @@ export function createJob<TInput, TOutput = unknown>(
   type: string,
   input: TInput,
   now = new Date(),
+  context: Pick<JobRecord, "runId" | "sessionId" | "parentJobId"> = {},
 ): JobRecord<TInput, TOutput> {
   const timestamp = now.toISOString();
   return {
     id: `job-${crypto.randomUUID()}`,
+    ...context,
     type,
     status: JobStatus.Queued,
     input: structuredClone(input),

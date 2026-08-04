@@ -159,13 +159,23 @@ function renderParagraph(
 }
 
 function renderInlines(nodes: DocumentInline[], context: ViewContext): ReactNode[] {
-  return nodes.map((node) => renderInline(node, context));
+  const result: ReactNode[] = [];
+  for (let index = 0; index < nodes.length; index += 1) {
+    const repaired = repairLegacyStrongQuotes(nodes, index, context);
+    if (repaired) {
+      result.push(...repaired.nodes);
+      index += repaired.consumed - 1;
+      continue;
+    }
+    result.push(renderInline(nodes[index]!, context));
+  }
+  return result;
 }
 
 function renderInline(node: DocumentInline, context: ViewContext): ReactNode {
   switch (node.type) {
     case "text":
-      return node.text;
+      return decodeHtmlText(node.text);
     case "emphasis":
       return <em key={node.id}>{renderInlines(node.children, context)}</em>;
     case "strong":
@@ -211,6 +221,57 @@ function renderInline(node: DocumentInline, context: ViewContext): ReactNode {
     default:
       return unsupportedNode(node);
   }
+}
+
+function repairLegacyStrongQuotes(
+  nodes: DocumentInline[],
+  index: number,
+  context: ViewContext,
+): { nodes: ReactNode[]; consumed: number } | null {
+  const before = nodes[index];
+  const connector = nodes[index + 1];
+  const after = nodes[index + 2];
+  if (before?.type !== "text" || connector?.type !== "strong" || after?.type !== "text") {
+    return null;
+  }
+  const opening = before.text.lastIndexOf("**");
+  const closing = after.text.indexOf("**");
+  if (opening < 0 || closing < 1) return null;
+  return {
+    consumed: 3,
+    nodes: [
+      decodeHtmlText(before.text.slice(0, opening)),
+      <strong key={`${before.id}:repaired`} className="font-semibold text-[var(--ink)]">
+        {decodeHtmlText(before.text.slice(opening + 2))}
+      </strong>,
+      ...renderInlines(connector.children, context),
+      <strong key={`${after.id}:repaired`} className="font-semibold text-[var(--ink)]">
+        {decodeHtmlText(after.text.slice(0, closing))}
+      </strong>,
+      decodeHtmlText(after.text.slice(closing + 2)),
+    ],
+  };
+}
+
+function decodeHtmlText(value: string): string {
+  return value.replace(/&(?:#x[\da-f]+|#\d+|amp|apos|quot|lt|gt|nbsp);/gi, (entity) => {
+    const named: Record<string, string> = {
+      "&amp;": "&",
+      "&apos;": "'",
+      "&quot;": '"',
+      "&lt;": "<",
+      "&gt;": ">",
+      "&nbsp;": " ",
+    };
+    const normalized = entity.toLowerCase();
+    if (normalized in named) return named[normalized]!;
+    const hexadecimal = normalized.match(/^&#x([\da-f]+);$/i)?.[1];
+    const decimal = normalized.match(/^&#(\d+);$/)?.[1];
+    const codePoint = Number.parseInt(hexadecimal ?? decimal ?? "", hexadecimal ? 16 : 10);
+    return Number.isSafeInteger(codePoint) && codePoint >= 0 && codePoint <= 0x10ffff
+      ? String.fromCodePoint(codePoint)
+      : entity;
+  });
 }
 
 function renderCitation(

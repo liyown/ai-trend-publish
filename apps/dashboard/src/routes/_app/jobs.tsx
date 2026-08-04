@@ -1,173 +1,69 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { listJobs, resumeJob } from "#platform/api/jobs.ts";
-import type { JobRecord } from "#platform/api/types.ts";
-import { useState } from "react";
-import { JobStatus, TaskStatus } from "@trendpublish/contracts";
-import { RotateCcw } from "lucide-react";
-import { useJobMonitor } from "#platform/api/use-job-monitor.ts";
+import { useQuery } from "@tanstack/react-query";
+import { listRuns } from "#platform/api/runs.ts";
 import { Button } from "#components/ui/button.tsx";
-import { AppDialog } from "#components/product/app-dialog.tsx";
 import { Badge } from "#components/ui/badge.tsx";
 import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
 import { Pagination } from "#components/ui/pagination.tsx";
-import { FormError } from "#components/product/form-error.tsx";
 import { PageGrid } from "#components/product/page-grid.tsx";
-import { isResumableJob, jobStatusTone, jobTypeLabel } from "./jobs/-job-presentation.ts";
-import { JobActivityView } from "./jobs/-job-activity-view.tsx";
+import { runStatusLabel, runStatusTone, runSummary, runTitle } from "./jobs/-run-presentation.ts";
 
 const PAGE_SIZE = 20;
-
-export const jobsKey = () => ["jobs"] as const;
-export const jobKey = (id: string) => ["jobs", id] as const;
-
-export function useJobs(page = 1) {
-  return useQuery({
-    queryKey: [...jobsKey(), page] as const,
-    queryFn: () => listJobs(page, PAGE_SIZE),
-  });
-}
-
-export function useResumeJob() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (job: Pick<JobRecord, "id" | "type">) => resumeJob(job),
-    onSuccess: () => qc.invalidateQueries({ queryKey: jobsKey() }),
-  });
-}
+export const runsKey = () => ["runs"] as const;
 
 export const Route = createFileRoute("/_app/jobs")({
-  validateSearch: (search: Record<string, unknown>) => ({
-    page: Number(search["page"] ?? 1) || 1,
-  }),
-  component: JobsPage,
+  validateSearch: (search: Record<string, unknown>) => ({ page: Number(search.page ?? 1) || 1 }),
+  component: RunsPage,
 });
 
-function JobsPage() {
+function RunsPage() {
   const { page } = Route.useSearch();
   const navigate = Route.useNavigate();
-  const { data } = useJobs(page);
-  const [selected, setSelected] = useState<string | null>(null);
-  const jobs = data?.items ?? [];
+  const { data } = useQuery({
+    queryKey: [...runsKey(), page],
+    queryFn: () => listRuns(page, PAGE_SIZE),
+    refetchInterval: 2_000,
+  });
+  const runs = data?.items ?? [];
   return (
     <PageGrid>
       <EntityList
         title="运行记录"
-        description="打开任务可查看真实检查点、尝试次数和副作用类型。"
-        empty={!jobs.length}
+        description="每条记录包含一个动态主会话和独立的多渠道发布会话。"
+        empty={!runs.length}
+        emptyTitle="还没有运行记录"
+        emptyDescription="运行内容方案、自动任务或手动发布后会显示在这里。"
         pagination={
           <Pagination
             page={page}
             pageSize={PAGE_SIZE}
             total={data?.total ?? 0}
-            onChange={(p) => navigate({ search: (previous) => ({ ...previous, page: p }) })}
+            onChange={(next) => navigate({ search: { page: next } })}
           />
         }
       >
-        {jobs.map((job) => (
+        {runs.map((run) => (
           <EntityRow
-            key={job.id}
-            title={jobTypeLabel(job.type)}
-            description={job.error || new Date(job.createdAt).toLocaleString()}
+            key={run.id}
+            title={runTitle(run)}
+            description={`${run.planName ?? (run.kind === "publication" ? "独立发布" : "内容方案")} · ${runSummary(run)} · ${new Date(run.createdAt).toLocaleString()}`}
             status={
-              job.status === JobStatus.Succeeded
+              run.status === "succeeded"
                 ? "ready"
-                : job.status === JobStatus.Failed ||
-                    job.status === JobStatus.NeedsAttention ||
-                    job.status === JobStatus.Degraded
+                : run.status === "failed" ||
+                    run.status === "partial" ||
+                    run.status === "needs_attention"
                   ? "warning"
                   : "disabled"
             }
-            meta={<Badge>{job.status}</Badge>}
+            meta={<Badge tone={runStatusTone(run.status)}>{runStatusLabel(run.status)}</Badge>}
           >
-            <Button onClick={() => setSelected(job.id)}>查看</Button>
+            <Button onClick={() => navigate({ to: "/jobs/$runId", params: { runId: run.id } })}>
+              查看
+            </Button>
           </EntityRow>
         ))}
       </EntityList>
-      <JobDialog jobId={selected} onOpenChange={(open) => !open && setSelected(null)} />
     </PageGrid>
-  );
-}
-
-function JobDialog({
-  jobId,
-  onOpenChange,
-}: {
-  jobId: string | null;
-  onOpenChange(open: boolean): void;
-}) {
-  const { data, error, runtimeEvents, streamState, streamError } = useJobMonitor(jobId);
-  const resume = useResumeJob();
-  return (
-    <AppDialog
-      open={Boolean(jobId)}
-      onOpenChange={onOpenChange}
-      title="运行详情"
-      description={data?.job.id ?? jobId ?? ""}
-      size="wide"
-    >
-      <div className="grid gap-5">
-        {error ? <FormError error={error} /> : null}
-        {data ? (
-          <>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge>{jobTypeLabel(data.job.type)}</Badge>
-              <Badge tone={jobStatusTone(data.job.status)}>{data.job.status}</Badge>
-              <span className="text-xs text-[var(--muted)]">
-                {new Date(data.job.createdAt).toLocaleString()}
-              </span>
-              {isResumableJob(data.job) &&
-              (data.job.status === JobStatus.Failed ||
-                data.job.status === JobStatus.NeedsAttention) ? (
-                <Button
-                  className="ml-auto"
-                  loading={resume.isPending}
-                  onClick={() => resume.mutate(data.job)}
-                >
-                  <RotateCcw className="size-4" />
-                  继续任务
-                </Button>
-              ) : null}
-            </div>
-            {data.job.error ? <FormError error={new Error(data.job.error)} /> : null}
-            <JobActivityView
-              events={runtimeEvents}
-              tasks={data.tasks}
-              jobStatus={data.job.status}
-              streamState={streamState}
-              streamError={streamError}
-            />
-            <section className="divide-y divide-[var(--border)] border-y border-[var(--border)]">
-              {data.tasks.map((task) => (
-                <div
-                  key={task.taskId}
-                  className="grid gap-2 py-3 md:grid-cols-[minmax(0,1fr)_120px_100px_100px]"
-                >
-                  <span className="truncate font-mono text-xs">{task.taskId}</span>
-                  <Badge>{task.effect}</Badge>
-                  <Badge
-                    tone={
-                      task.status === TaskStatus.Succeeded
-                        ? "success"
-                        : task.status === TaskStatus.Unknown || task.status === TaskStatus.Failed
-                          ? "danger"
-                          : "warning"
-                    }
-                  >
-                    {task.status}
-                  </Badge>
-                  <span className="text-xs">尝试 {task.attempt}</span>
-                  {task.error ? (
-                    <p className="text-xs text-[var(--danger)] md:col-span-4">{task.error}</p>
-                  ) : null}
-                </div>
-              ))}
-            </section>
-          </>
-        ) : (
-          <div className="h-32 animate-pulse rounded bg-[var(--surface-2)]" />
-        )}
-      </div>
-    </AppDialog>
   );
 }

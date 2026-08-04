@@ -1,4 +1,4 @@
-import { equal, rejects } from "node:assert/strict";
+import { equal, rejects } from "../test-assert.ts";
 import { test } from "vite-plus/test";
 import { ConnectorError } from "../errors.ts";
 import { FetchHttpTransport } from "../http.ts";

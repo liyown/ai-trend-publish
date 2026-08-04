@@ -8,6 +8,9 @@ import {
   type HttpRequest,
   type HttpResponse,
   type HttpStreamResponse,
+  HttpProxyTransport,
+  type HttpTransport,
+  type ProxyTransportFactory,
 } from "./http.ts";
 import type { CallContext, ConnectorCapability, ConnectorOperation, JsonObject } from "./types.ts";
 
@@ -37,6 +40,14 @@ export interface ConnectorCreateContext<TSettings, TCredentials> {
     context?: CallContext,
     credentialHeaders?: Record<string, string>,
   ): Promise<HttpStreamResponse>;
+  proxyTransport(proxyUrl: string): HttpTransport;
+  executeWithTransport(
+    transport: HttpTransport,
+    operation: ConnectorOperation,
+    request: HttpRequest,
+    context?: CallContext,
+    credentialHeaders?: Record<string, string>,
+  ): Promise<HttpResponse>;
 }
 
 export interface ConnectorDefinition<
@@ -89,6 +100,7 @@ export function createConnectorContext(
   definition: ConnectorDefinition,
   connection: ResolvedConnection,
   executor: ConnectorExecutor,
+  proxyTransportFactory: ProxyTransportFactory = (proxyUrl) => new HttpProxyTransport(proxyUrl),
 ): ConnectorCreateContext<JsonObject, JsonObject> {
   const settings = definition.settingsSchema.parse(connection.settings) as JsonObject;
   const credentials = definition.credentialsSchema.parse(connection.credentials) as JsonObject;
@@ -117,6 +129,22 @@ export function createConnectorContext(
         ),
         context,
       );
+    },
+    proxyTransport(proxyUrl) {
+      return proxyTransportFactory(proxyUrl);
+    },
+    executeWithTransport(transport, operation, request, context, credentialHeaders) {
+      return executor
+        .using(transport)
+        .send(
+          operation,
+          buildRequest(
+            request,
+            definition.requestOverrides ? connection.overrides : undefined,
+            credentialHeaders,
+          ),
+          context,
+        );
     },
   };
 }

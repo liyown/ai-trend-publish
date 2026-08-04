@@ -30,6 +30,14 @@ export type ConnectorCallEvent =
   | { type: "response.started"; model?: string }
   | { type: "response.delta"; delta: string; accumulatedCharacters: number }
   | {
+      type: "response.tool_delta";
+      index: number;
+      id?: string;
+      name?: string;
+      argumentsDelta: string;
+      accumulatedArguments: string;
+    }
+  | {
       type: "response.completed";
       model?: string;
       usage?: ChatOutput["usage"];
@@ -41,10 +49,22 @@ export interface ConnectorOperation {
   capability: ConnectorCapability;
 }
 
-export interface ChatMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
+export interface ChatToolCall {
+  id: string;
+  name: string;
+  arguments: string;
 }
+
+export interface ChatToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: JsonObject;
+}
+
+export type ChatMessage =
+  | { role: "system" | "user"; content: string }
+  | { role: "assistant"; content?: string; toolCalls?: ChatToolCall[] }
+  | { role: "tool"; toolCallId: string; content: string };
 
 export interface ChatInput {
   messages: ChatMessage[];
@@ -53,10 +73,13 @@ export interface ChatInput {
   topP?: number;
   maxTokens?: number;
   responseFormat?: "text" | "json";
+  tools?: ChatToolDefinition[];
+  toolChoice?: "auto" | "required" | "none" | { name: string };
 }
 
 export interface ChatOutput {
   content: string;
+  toolCalls?: ChatToolCall[];
   model?: string;
   usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
   raw?: JsonValue;

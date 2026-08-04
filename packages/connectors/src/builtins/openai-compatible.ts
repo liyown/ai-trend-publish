@@ -5,6 +5,7 @@ import type {
   ChatClient,
   ChatInput,
   ChatOutput,
+  ChatToolCall,
   CallContext,
   EmbeddingClient,
   EmbeddingInput,
@@ -42,7 +43,7 @@ export const openAICompatibleConnector = defineConnector({
   version: 1,
   displayName: "OpenAI Compatible",
   description: "兼容 OpenAI Chat Completions 和 Embeddings 协议的模型服务。",
-  capabilities: ["chat", "embedding"],
+  capabilities: ["chat", "tool-calling", "embedding"],
   settingsSchema,
   credentialsSchema,
   fields: [
@@ -96,13 +97,27 @@ class OpenAICompatibleChatClient implements ChatClient {
   async complete(input: ChatInput, callContext: CallContext = {}): Promise<ChatOutput> {
     const body: JsonObject = {
       model: input.model ?? this.context.settings.model,
-      messages: input.messages.map(({ role, content }) => ({ role, content })),
+      messages: input.messages.map(openAIMessage),
     };
     if (input.temperature !== undefined) body.temperature = input.temperature;
     if (input.topP !== undefined) body.top_p = input.topP;
     if (input.maxTokens !== undefined) body.max_tokens = input.maxTokens;
     if (input.responseFormat) {
       body.response_format = { type: input.responseFormat === "json" ? "json_object" : "text" };
+    }
+    if (input.tools?.length) {
+      body.tools = input.tools.map((tool) => ({
+        type: "function",
+        function: {
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.inputSchema,
+        },
+      }));
+      body.tool_choice =
+        typeof input.toolChoice === "object"
+          ? { type: "function", function: { name: input.toolChoice.name } }
+          : (input.toolChoice ?? "auto");
     }
     if (callContext.onEvent) return await this.completeStreaming(body, callContext);
     const response = await this.context.execute(
@@ -117,12 +132,18 @@ class OpenAICompatibleChatClient implements ChatClient {
       authorization(this.context.credentials.apiKey),
     );
     const data = response.json<OpenAIChatResponse>();
-    const content = data.choices?.[0]?.message?.content;
-    if (typeof content !== "string") {
-      throw new ConnectorError({ kind: "invalid_response", message: "模型服务未返回消息内容" });
+    const message = data.choices?.[0]?.message;
+    const content = typeof message?.content === "string" ? message.content : "";
+    const toolCalls = normalizeToolCalls(message?.tool_calls);
+    if (!content && !toolCalls.length) {
+      throw new ConnectorError({
+        kind: "invalid_response",
+        message: "模型服务未返回消息或工具调用",
+      });
     }
     return {
       content,
+      ...(toolCalls.length ? { toolCalls } : {}),
       model: data.model,
       usage: data.usage
         ? {
@@ -154,6 +175,7 @@ class OpenAICompatibleChatClient implements ChatClient {
     let content = "";
     let model: string | undefined;
     let usage: ChatOutput["usage"];
+    const streamedToolCalls = new Map<number, ChatToolCall>();
     let started = false;
     let terminated = false;
     let eventName = "";
@@ -197,6 +219,24 @@ class OpenAICompatibleChatClient implements ChatClient {
           type: "response.delta",
           delta,
           accumulatedCharacters: content.length,
+        });
+      }
+      for (const toolCall of choice?.delta?.tool_calls ?? []) {
+        const index = toolCall.index ?? 0;
+        const current = streamedToolCalls.get(index) ?? { id: "", name: "", arguments: "" };
+        const next = {
+          id: toolCall.id ?? current.id,
+          name: toolCall.function?.name ?? current.name,
+          arguments: current.arguments + (toolCall.function?.arguments ?? ""),
+        };
+        streamedToolCalls.set(index, next);
+        callContext.onEvent?.({
+          type: "response.tool_delta",
+          index,
+          ...(next.id ? { id: next.id } : {}),
+          ...(next.name ? { name: next.name } : {}),
+          argumentsDelta: toolCall.function?.arguments ?? "",
+          accumulatedArguments: next.arguments,
         });
       }
       if (
@@ -275,8 +315,14 @@ class OpenAICompatibleChatClient implements ChatClient {
           message: "模型服务响应流在完成标记前已结束",
         });
       }
-      if (!content) {
-        throw new ConnectorError({ kind: "invalid_response", message: "模型服务未返回消息内容" });
+      const toolCalls = [...streamedToolCalls.entries()]
+        .sort(([left], [right]) => left - right)
+        .map(([, call]) => call);
+      if (!content && !toolCalls.length) {
+        throw new ConnectorError({
+          kind: "invalid_response",
+          message: "模型服务未返回消息或工具调用",
+        });
       }
       callContext.onEvent?.({
         type: "response.completed",
@@ -305,7 +351,10 @@ class OpenAICompatibleChatClient implements ChatClient {
     } finally {
       reader.releaseLock();
     }
-    return { content, model, usage };
+    const toolCalls = [...streamedToolCalls.entries()]
+      .sort(([left], [right]) => left - right)
+      .map(([, call]) => call);
+    return { content, ...(toolCalls.length ? { toolCalls } : {}), model, usage };
   }
 }
 
@@ -346,17 +395,32 @@ class OpenAICompatibleEmbeddingClient implements EmbeddingClient {
 
 interface OpenAIChatResponse {
   model?: string;
-  choices?: Array<{ message?: { content?: string | null } }>;
+  choices?: Array<{
+    message?: { content?: string | null; tool_calls?: OpenAIToolCall[] };
+  }>;
   usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
 }
 
 interface OpenAIChatChunk {
   model?: string;
   choices?: Array<{
-    delta?: { content?: string | null };
+    delta?: {
+      content?: string | null;
+      tool_calls?: Array<{
+        index?: number;
+        id?: string;
+        function?: { name?: string; arguments?: string };
+      }>;
+    };
     finish_reason?: string | null;
   }>;
   usage?: OpenAIChatResponse["usage"];
+}
+
+interface OpenAIToolCall {
+  id?: string;
+  type?: string;
+  function?: { name?: string; arguments?: string };
 }
 
 interface OpenAIEmbeddingResponse {
@@ -367,6 +431,42 @@ interface OpenAIEmbeddingResponse {
 
 function authorization(apiKey: string): Record<string, string> {
   return { Authorization: `Bearer ${apiKey}` };
+}
+
+function openAIMessage(message: ChatInput["messages"][number]): JsonObject {
+  if (message.role === "tool") {
+    return { role: "tool", tool_call_id: message.toolCallId, content: message.content };
+  }
+  if (message.role === "assistant") {
+    return {
+      role: "assistant",
+      content: message.content ?? null,
+      ...(message.toolCalls?.length
+        ? {
+            tool_calls: message.toolCalls.map((call) => ({
+              id: call.id,
+              type: "function",
+              function: { name: call.name, arguments: call.arguments },
+            })),
+          }
+        : {}),
+    };
+  }
+  return { role: message.role, content: message.content };
+}
+
+function normalizeToolCalls(value: OpenAIToolCall[] | undefined): ChatToolCall[] {
+  return (value ?? []).map((call, index) => {
+    const id = call.id?.trim();
+    const name = call.function?.name?.trim();
+    if (!id || !name) {
+      throw new ConnectorError({
+        kind: "invalid_response",
+        message: `模型服务返回了无效的工具调用 ${index + 1}`,
+      });
+    }
+    return { id, name, arguments: call.function?.arguments ?? "{}" };
+  });
 }
 
 function joinUrl(baseUrl: string, path: string): string {

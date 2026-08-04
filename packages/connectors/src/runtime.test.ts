@@ -1,5 +1,5 @@
 import { test } from "vite-plus/test";
-import { deepStrictEqual, equal, rejects } from "node:assert/strict";
+import { deepStrictEqual, equal, rejects } from "./test-assert.ts";
 import { z } from "zod";
 import {
   MemoryConnectionStore,
@@ -11,6 +11,7 @@ import { ConnectorRegistry } from "./registry.ts";
 import { ConnectorClientResolver, ConnectorManager } from "./runtime.ts";
 import { ChatCapability, type ChatClient } from "./types.ts";
 import type { HttpTransport } from "./http.ts";
+import { weixinOfficialAccountConnector } from "./builtins/weixin.ts";
 
 const definition = defineConnector({
   id: "example",
@@ -82,6 +83,33 @@ test("manager keeps credentials out of public connections and preserves blank se
   deepStrictEqual(saved.credentialState, { apiKey: true });
   equal("credentials" in saved, false);
   deepStrictEqual(await stores.credentials.get("connector:default"), { apiKey: "secret" });
+});
+
+test("manager exposes only HTTP proxy credential state for Weixin accounts", async () => {
+  const stores = {
+    connections: new MemoryConnectionStore(),
+    credentials: new MemoryCredentialStore(),
+  };
+  const registry = new ConnectorRegistry([weixinOfficialAccountConnector]);
+  const runtime = new ConnectorClientResolver({ registry, ...stores, transport: noopTransport });
+  const manager = new ConnectorManager(runtime, registry, stores.connections, stores.credentials);
+  const proxyUrl = "http://proxy-user:proxy-secret@proxy.example.com:8080";
+
+  const connection = await manager.save({
+    id: "weixin-account",
+    connectorId: weixinOfficialAccountConnector.id,
+    name: "公众号",
+    settings: {},
+    credentials: { appId: "wx-app", appSecret: "wx-secret", proxyUrl },
+  });
+
+  deepStrictEqual(connection.credentialState, {
+    appId: true,
+    appSecret: true,
+    proxyUrl: true,
+  });
+  equal(JSON.stringify(connection).includes(proxyUrl), false);
+  equal(JSON.stringify(connection).includes("proxy-secret"), false);
 });
 
 test("manager rejects stale connection edits", async () => {

@@ -1,5 +1,5 @@
 import { test } from "vite-plus/test";
-import { deepStrictEqual, equal, rejects } from "node:assert/strict";
+import { deepStrictEqual, equal, rejects } from "./test-assert.ts";
 import {
   buildConnectorRequest,
   ConnectorExecutor,

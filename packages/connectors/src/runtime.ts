@@ -17,6 +17,7 @@ import {
   FetchHttpTransport,
   type ConnectorObserver,
   type HttpTransport,
+  type ProxyTransportFactory,
 } from "./http.ts";
 import { ConnectorRegistry } from "./registry.ts";
 import type { CapabilityToken, JsonObject, RequestOverrides } from "./types.ts";
@@ -27,6 +28,7 @@ export interface ConnectorClientResolverOptions {
   credentials: CredentialStore;
   transport?: HttpTransport;
   observer?: ConnectorObserver;
+  proxyTransportFactory?: ProxyTransportFactory;
 }
 
 export interface StandaloneConnectorOptions {
@@ -37,6 +39,7 @@ export interface StandaloneConnectorOptions {
   overrides?: RequestOverrides;
   transport?: HttpTransport;
   observer?: ConnectorObserver;
+  proxyTransportFactory?: ProxyTransportFactory;
 }
 
 export function createStandaloneConnectorClients<TClients extends ConnectorClients>(
@@ -65,7 +68,9 @@ export function createStandaloneConnectorClients<TClients extends ConnectorClien
     options.transport ?? new FetchHttpTransport(),
     options.observer,
   );
-  return definition.create(createConnectorContext(definition, connection, executor));
+  return definition.create(
+    createConnectorContext(definition, connection, executor, options.proxyTransportFactory),
+  );
 }
 
 interface CachedClients {
@@ -148,7 +153,12 @@ export class ConnectorClientResolver {
       this.transport,
       this.options.observer,
     );
-    return createConnectorContext(definition, connection, executor);
+    return createConnectorContext(
+      definition,
+      connection,
+      executor,
+      this.options.proxyTransportFactory,
+    );
   }
 
   private createClients(connection: ResolvedConnection, cache = true): ConnectorClients {
@@ -159,7 +169,12 @@ export class ConnectorClientResolver {
       this.transport,
       this.options.observer,
     );
-    const context = createConnectorContext(definition, connection, executor);
+    const context = createConnectorContext(
+      definition,
+      connection,
+      executor,
+      this.options.proxyTransportFactory,
+    );
     const clients = definition.create(context);
     if (cache) this.cache.set(connection.id, { revision: connection.revision, clients });
     return clients;
@@ -245,6 +260,61 @@ export class ConnectorManager {
     await this.credentials.set(credentialRef, nextCredentials);
     this.clientResolver.invalidate(saved.id);
     return await this.toPublicConnection(saved);
+  }
+
+  /** Copies settings and secrets entirely inside the service boundary for managed ownership. */
+  async clone(
+    sourceId: string,
+    input: Pick<SaveConnectionInput, "id" | "name" | "metadata">,
+  ): Promise<PublicConnection> {
+    const existing = await this.connections.get(input.id);
+    if (existing) {
+      if (
+        existing.metadata["managedBy"] !== input.metadata?.["managedBy"] ||
+        existing.metadata["accountId"] !== input.metadata?.["accountId"]
+      ) {
+        throw new ConnectorError({
+          kind: "configuration",
+          message: `受管连接 ${input.id} 已被其他对象占用`,
+        });
+      }
+      return await this.toPublicConnection(existing);
+    }
+    const source = await this.connections.get(sourceId);
+    if (!source) {
+      throw new ConnectorError({ kind: "configuration", message: `连接不存在：${sourceId}` });
+    }
+    const credentials = (await this.credentials.get(source.credentialRef)) ?? {};
+    return await this.save({
+      id: input.id,
+      connectorId: source.connectorId,
+      name: input.name,
+      enabled: source.enabled,
+      settings: source.settings,
+      credentials,
+      metadata: input.metadata,
+      overrides: source.overrides,
+    });
+  }
+
+  async manage(
+    id: string,
+    input: Pick<SaveConnectionInput, "name" | "metadata">,
+  ): Promise<PublicConnection> {
+    const current = await this.connections.get(id);
+    if (!current) {
+      throw new ConnectorError({ kind: "configuration", message: `连接不存在：${id}` });
+    }
+    return await this.save({
+      id,
+      revision: current.revision,
+      connectorId: current.connectorId,
+      name: input.name,
+      enabled: current.enabled,
+      settings: current.settings,
+      metadata: input.metadata,
+      overrides: current.overrides,
+    });
   }
 
   async remove(id: string): Promise<void> {

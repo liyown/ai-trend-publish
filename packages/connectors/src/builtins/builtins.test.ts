@@ -1,4 +1,4 @@
-import { deepStrictEqual, equal, rejects, throws } from "node:assert/strict";
+import { deepStrictEqual, equal, rejects, throws } from "../test-assert.ts";
 import { test } from "vite-plus/test";
 import {
   HttpResponse,
@@ -15,6 +15,8 @@ import {
   miniMaxConnector,
   openAICompatibleConnector,
   sourceConnectors,
+  weixinOfficialAccountConnector,
+  weixinRelayConnector,
 } from "./index.ts";
 
 test("built-in connector registry exposes supported service definitions", () => {
@@ -82,6 +84,88 @@ test("OpenAI-compatible chat maps domain input and sends exactly one request", a
     temperature: 0.3,
     metadata: { source: "dashboard" },
   });
+});
+
+test("OpenAI-compatible chat maps native tool definitions and tool calls", async () => {
+  const transport = new RecordingTransport({
+    choices: [
+      {
+        message: {
+          content: null,
+          tool_calls: [
+            {
+              id: "call-1",
+              type: "function",
+              function: { name: "search_news", arguments: '{"query":"AI"}' },
+            },
+          ],
+        },
+      },
+    ],
+  });
+  const clients = createStandaloneConnectorClients(openAICompatibleConnector, {
+    id: "ai-tools",
+    settings: { baseUrl: "https://models.example/v1", model: "default-model" },
+    credentials: { apiKey: "secret" },
+    transport,
+  });
+
+  const output = await clients.chat!.complete({
+    messages: [{ role: "user", content: "research" }],
+    tools: [
+      {
+        name: "search_news",
+        description: "搜索新闻",
+        inputSchema: { type: "object", properties: { query: { type: "string" } } },
+      },
+    ],
+    toolChoice: "auto",
+  });
+
+  deepStrictEqual(output.toolCalls, [
+    { id: "call-1", name: "search_news", arguments: '{"query":"AI"}' },
+  ]);
+  const body = JSON.parse(transport.requests[0].body as string);
+  equal(body.tools[0].function.name, "search_news");
+  equal(body.tool_choice, "auto");
+});
+
+test("OpenAI-compatible chat assembles streamed native tool call arguments", async () => {
+  const transport = new StreamingTransport([
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-1","function":{"name":"search_news","arguments":"{\\"query\\":"}}]}}]}\n\n',
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\\"AI\\"}"}}]},"finish_reason":"tool_calls"}]}\n\n',
+  ]);
+  const clients = createStandaloneConnectorClients(openAICompatibleConnector, {
+    id: "ai-stream-tools",
+    settings: { baseUrl: "https://models.example/v1", model: "default-model" },
+    credentials: { apiKey: "secret" },
+    transport,
+  });
+
+  const events: Array<{ type: string; accumulatedArguments?: string }> = [];
+  const output = await clients.chat!.complete(
+    { messages: [{ role: "user", content: "research" }] },
+    {
+      onEvent(event) {
+        events.push({
+          type: event.type,
+          accumulatedArguments:
+            event.type === "response.tool_delta" ? event.accumulatedArguments : undefined,
+        });
+      },
+    },
+  );
+
+  deepStrictEqual(output.toolCalls, [
+    { id: "call-1", name: "search_news", arguments: '{"query":"AI"}' },
+  ]);
+  deepStrictEqual(
+    events.filter((event) => event.type === "response.tool_delta"),
+    [
+      { type: "response.tool_delta", accumulatedArguments: '{"query":' },
+      { type: "response.tool_delta", accumulatedArguments: '{"query":"AI"}' },
+    ],
+  );
 });
 
 test("OpenAI-compatible chat streams content deltas when events are requested", async () => {
@@ -379,6 +463,149 @@ test("MiniMax image connector rejects invalid official parameters without a requ
   equal(transport.requests.length, 0);
 });
 
+test("Weixin direct connector routes every API operation through its account HTTP proxy", async () => {
+  const directTransport = new RecordingTransport({ unexpected: true });
+  const proxyTransport = new QueueRecordingTransport([
+    { access_token: "token", expires_in: 7200 },
+    { media_id: "cover-media" },
+    { url: "https://mmbiz.qpic.cn/content.jpg" },
+    { media_id: "draft-media", article_id: "article-id" },
+  ]);
+  const proxyUrls: string[] = [];
+  const clients = createStandaloneConnectorClients(weixinOfficialAccountConnector, {
+    id: "weixin-proxied",
+    settings: {},
+    credentials: {
+      appId: "wx-app",
+      appSecret: "wx-secret",
+      proxyUrl: "http://proxy-user:proxy-secret@proxy.example.com:8080",
+    },
+    transport: directTransport,
+    proxyTransportFactory(proxyUrl) {
+      proxyUrls.push(proxyUrl);
+      return proxyTransport;
+    },
+  });
+
+  await clients.weixin!.check();
+  await clients.weixin!.uploadCover({
+    bytes: new TextEncoder().encode("cover"),
+    mimeType: "image/jpeg",
+    filename: "cover.jpg",
+  });
+  await clients.weixin!.uploadContentImage({
+    bytes: new TextEncoder().encode("content"),
+    mimeType: "image/jpeg",
+    filename: "content.jpg",
+  });
+  await clients.weixin!.createDraft({
+    title: "标题",
+    digest: "摘要",
+    contentHtml: "<p>正文</p>",
+    coverMediaId: "cover-media",
+  });
+
+  deepStrictEqual(proxyUrls, ["http://proxy-user:proxy-secret@proxy.example.com:8080"]);
+  equal(directTransport.requests.length, 0);
+  equal(proxyTransport.requests.length, 4);
+  equal(new URL(proxyTransport.requests[0]!.url).pathname, "/cgi-bin/token");
+  equal(new URL(proxyTransport.requests[1]!.url).pathname, "/cgi-bin/material/add_material");
+  equal(new URL(proxyTransport.requests[2]!.url).pathname, "/cgi-bin/media/uploadimg");
+  equal(new URL(proxyTransport.requests[3]!.url).pathname, "/cgi-bin/draft/add");
+});
+
+test("Weixin direct connector remains direct when no HTTP proxy is configured", async () => {
+  const transport = new RecordingTransport({ access_token: "token", expires_in: 7200 });
+  const clients = createStandaloneConnectorClients(weixinOfficialAccountConnector, {
+    id: "weixin-direct",
+    settings: {},
+    credentials: { appId: "wx-app", appSecret: "wx-secret" },
+    transport,
+    proxyTransportFactory() {
+      throw new Error("proxy transport was not expected");
+    },
+  });
+
+  await clients.weixin!.check();
+  equal(transport.requests.length, 1);
+});
+
+test("Weixin Relay confirms the exact cover bytes before accepting an upload", async () => {
+  const bytes = new TextEncoder().encode("generated-cover");
+  const checksum = await sha256(bytes);
+  const transport = new RecordingTransport({
+    success: true,
+    data: { mediaId: "cover-media", receivedChecksum: checksum },
+  });
+  const clients = createStandaloneConnectorClients(weixinRelayConnector, {
+    id: "weixin-relay",
+    settings: { relayUrl: "https://relay.example.com" },
+    credentials: { relayToken: "relay-secret", appId: "wx-app", appSecret: "wx-secret" },
+    transport,
+  });
+
+  equal(
+    await clients.weixin!.uploadCover({ bytes, mimeType: "image/jpeg", filename: "cover.jpg" }),
+    "cover-media",
+  );
+  const body = JSON.parse(transport.requests[0]!.body as string);
+  equal(body.payload.checksum, checksum);
+  equal(body.payload.imageBufferBase64, btoa("generated-cover"));
+});
+
+test("Weixin Relay connection check rejects a stale protocol", async () => {
+  const clients = createStandaloneConnectorClients(weixinRelayConnector, {
+    id: "weixin-relay-check",
+    settings: { relayUrl: "https://relay.example.com" },
+    credentials: { relayToken: "relay-secret", appId: "wx-app", appSecret: "wx-secret" },
+    transport: new RecordingTransport({ success: true, data: { result: true } }),
+  });
+
+  await rejects(() => clients.weixin!.check(), /Relay 版本过旧/);
+});
+
+test("Weixin Relay confirms the cover media id used to create a draft", async () => {
+  const transport = new RecordingTransport({
+    success: true,
+    data: { mediaId: "draft-media", coverMediaId: "cover-media" },
+  });
+  const clients = createStandaloneConnectorClients(weixinRelayConnector, {
+    id: "weixin-relay-draft",
+    settings: { relayUrl: "https://relay.example.com" },
+    credentials: { relayToken: "relay-secret", appId: "wx-app", appSecret: "wx-secret" },
+    transport,
+  });
+
+  const draft = await clients.weixin!.createDraft({
+    title: "标题",
+    digest: "摘要",
+    contentHtml: "<p>正文</p>",
+    coverMediaId: "cover-media",
+  });
+
+  equal(draft.mediaId, "draft-media");
+  equal(JSON.parse(transport.requests[0]!.body as string).payload.coverMediaId, "cover-media");
+});
+
+test("Weixin Relay rejects an upload without an exact asset receipt", async () => {
+  const clients = createStandaloneConnectorClients(weixinRelayConnector, {
+    id: "weixin-relay-stale",
+    settings: { relayUrl: "https://relay.example.com" },
+    credentials: { relayToken: "relay-secret", appId: "wx-app", appSecret: "wx-secret" },
+    transport: new RecordingTransport({ success: true, data: { mediaId: "old-cover" } }),
+  });
+
+  await rejects(
+    () =>
+      clients.weixin!.uploadCover({
+        bytes: new TextEncoder().encode("new-cover"),
+        mimeType: "image/jpeg",
+        filename: "cover.jpg",
+      }),
+    /未确认收到本次上传的图片/,
+  );
+});
+
 test("source connectors expose separate search and fetch capabilities", async () => {
   const auto = sourceConnectors.find((definition) => definition.id === "auto")!;
   const jina = sourceConnectors.find((definition) => definition.id === "jina")!;
@@ -429,6 +656,29 @@ class RecordingTransport implements HttpTransport {
       new TextEncoder().encode(JSON.stringify(this.response)),
     );
   }
+}
+
+class QueueRecordingTransport implements HttpTransport {
+  readonly requests: HttpRequest[] = [];
+
+  constructor(private readonly responses: unknown[]) {}
+
+  async send(request: HttpRequest): Promise<HttpResponse> {
+    this.requests.push(request);
+    const response = this.responses.shift();
+    return new HttpResponse(
+      200,
+      new Headers({ "content-type": "application/json" }),
+      new TextEncoder().encode(JSON.stringify(response)),
+    );
+  }
+}
+
+async function sha256(bytes: Uint8Array): Promise<string> {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", buffer));
+  return [...digest].map((value) => value.toString(16).padStart(2, "0")).join("");
 }
 
 class StreamingTransport implements HttpTransport {

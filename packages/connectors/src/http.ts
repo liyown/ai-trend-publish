@@ -64,6 +64,8 @@ export interface HttpTransport {
   stream?(request: HttpRequest, context: TransportContext): Promise<HttpStreamResponse>;
 }
 
+export type ProxyTransportFactory = (proxyUrl: string) => HttpTransport;
+
 export class HttpStreamResponse {
   constructor(
     readonly status: number,
@@ -173,6 +175,98 @@ export class FetchHttpTransport implements HttpTransport {
   }
 }
 
+const undiciModuleName = "undici";
+
+interface UndiciProxyModule {
+  ProxyAgent: new (uri: string) => {
+    close(): Promise<void>;
+  };
+  fetch(
+    input: string,
+    init: RequestInit & { dispatcher: unknown },
+  ): Promise<{
+    status: number;
+    statusText: string;
+    headers: Iterable<[string, string]>;
+    arrayBuffer(): Promise<ArrayBuffer>;
+  }>;
+}
+
+/** Node-only HTTP CONNECT transport, loaded lazily so non-Node runtimes can still use connectors. */
+export class HttpProxyTransport implements HttpTransport {
+  private client?: Promise<{
+    module: UndiciProxyModule;
+    dispatcher: InstanceType<UndiciProxyModule["ProxyAgent"]>;
+  }>;
+
+  constructor(private readonly proxyUrl: string) {
+    assertHttpProxyUrl(proxyUrl);
+  }
+
+  async send(request: HttpRequest, context: TransportContext): Promise<HttpResponse> {
+    try {
+      const { module, dispatcher } = await (this.client ??= this.createClient());
+      const response = await module.fetch(request.url, {
+        method: request.method ?? "GET",
+        headers: request.headers,
+        body: request.body,
+        signal: context.signal,
+        dispatcher,
+      });
+      const result = new HttpResponse(
+        response.status,
+        new Headers(Array.from(response.headers)),
+        new Uint8Array(await response.arrayBuffer()),
+        response.statusText,
+      );
+      if (!result.ok) throw httpStatusError(request, result);
+      return result;
+    } catch (error) {
+      if (error instanceof ConnectorError) throw error;
+      const timedOut =
+        context.signal?.aborted &&
+        (context.signal.reason instanceof DOMException
+          ? context.signal.reason.name === "TimeoutError"
+          : false);
+      throw new ConnectorError({
+        kind: timedOut ? "timeout" : "network",
+        message: timedOut ? "HTTP 代理请求超时" : "无法通过 HTTP 代理连接外部服务",
+        retryable: true,
+        outcome: ConnectorOutcome.Unknown,
+      });
+    }
+  }
+
+  async close(): Promise<void> {
+    if (!this.client) return;
+    const { dispatcher } = await this.client;
+    await dispatcher.close();
+  }
+
+  private async createClient(): Promise<{
+    module: UndiciProxyModule;
+    dispatcher: InstanceType<UndiciProxyModule["ProxyAgent"]>;
+  }> {
+    const module = (await import(undiciModuleName)) as unknown as UndiciProxyModule;
+    return { module, dispatcher: new module.ProxyAgent(this.proxyUrl) };
+  }
+}
+
+function assertHttpProxyUrl(value: string): void {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new ConnectorError({ kind: "configuration", message: "HTTP 代理地址无效" });
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new ConnectorError({
+      kind: "configuration",
+      message: "HTTP 代理地址只支持 http:// 或 https://",
+    });
+  }
+}
+
 export interface ConnectorObserver {
   onOperationStart?(event: OperationEvent): void;
   onOperationEnd?(event: OperationEndEvent): void;
@@ -241,6 +335,10 @@ export class ConnectorExecutor {
       });
       throw normalized;
     }
+  }
+
+  using(transport: HttpTransport): ConnectorExecutor {
+    return new ConnectorExecutor(this.connectorId, this.connectionId, transport, this.observer);
   }
 
   async stream(
@@ -376,7 +474,7 @@ function normalizeStreamReadError(error: unknown, signal?: AbortSignal): Connect
   });
 }
 
-function httpStatusError(request: HttpRequest, result: HttpResponse): ConnectorError {
+export function httpStatusError(request: HttpRequest, result: HttpResponse): ConnectorError {
   const detail = redactHttpDetail(result.text().trim()).slice(0, 4_000);
   const requestId = responseRequestId(result.headers);
   const statusLabel = [result.status, result.statusText].filter(Boolean).join(" ");

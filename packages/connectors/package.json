@@ -11,7 +11,11 @@
   },
   "dependencies": {
     "@trendpublish/contracts": "workspace:*",
+    "undici": "^7.24.8",
     "zod": "^3.25.76",
     "zod-to-json-schema": "^3.25.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2"
   }
 }

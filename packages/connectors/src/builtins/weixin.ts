@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { ChannelId } from "@trendpublish/contracts";
-import { ConnectorError } from "../errors.ts";
+import { ConnectorError, ConnectorOutcome } from "../errors.ts";
 import { defineConnector, type ConnectorCreateContext } from "../definition.ts";
+import type { HttpRequest, HttpResponse, HttpTransport } from "../http.ts";
 import { defineCapability, type CallContext, type JsonObject } from "../types.ts";
 
 export interface WeixinAssetInput {
@@ -46,6 +47,13 @@ const directSettingsSchema = z.object({
 const directCredentialsSchema = z.object({
   appId: z.string().min(1),
   appSecret: z.string().min(1),
+  proxyUrl: z
+    .string()
+    .url()
+    .refine((value) => ["http:", "https:"].includes(new URL(value).protocol), {
+      message: "HTTP 代理地址只支持 http:// 或 https://",
+    })
+    .optional(),
 });
 type DirectSettings = z.infer<typeof directSettingsSchema>;
 type DirectCredentials = z.infer<typeof directCredentialsSchema>;
@@ -72,6 +80,7 @@ const uploadContentOperation = {
 } as const;
 const createDraftOperation = { name: "weixin.create-draft", capability: "weixin" } as const;
 const relayOperation = { name: "weixin.relay", capability: "weixin" } as const;
+const WEIXIN_RELAY_PROTOCOL_VERSION = 2;
 
 export const weixinOfficialAccountConnector = defineConnector({
   id: ChannelId.WeixinOfficialAccount,
@@ -130,6 +139,16 @@ export const weixinOfficialAccountConnector = defineConnector({
       input: "password",
       required: true,
       order: 60,
+    },
+    {
+      key: "proxyUrl",
+      location: "credentials",
+      label: "HTTP 代理地址",
+      description: "可选。微信 API 将通过该代理的固定出口 IP 请求，支持用户名和密码。",
+      input: "password",
+      required: false,
+      placeholder: "http://username:password@proxy.example.com:8080",
+      order: 70,
     },
   ],
   requestOverrides: true,
@@ -223,10 +242,13 @@ interface TokenResponse extends JsonObject {
 
 class DirectWeixinClient implements WeixinClient {
   private token?: { value: string; expiresAt: number };
+  private readonly proxyTransport?: HttpTransport;
 
-  constructor(
-    private readonly context: ConnectorCreateContext<DirectSettings, DirectCredentials>,
-  ) {}
+  constructor(private readonly context: ConnectorCreateContext<DirectSettings, DirectCredentials>) {
+    if (context.credentials.proxyUrl) {
+      this.proxyTransport = context.proxyTransport(context.credentials.proxyUrl);
+    }
+  }
 
   async check(callContext: CallContext = {}): Promise<string> {
     await this.accessToken(callContext);
@@ -236,7 +258,7 @@ class DirectWeixinClient implements WeixinClient {
   async uploadCover(asset: WeixinAssetInput, callContext: CallContext = {}): Promise<string> {
     const token = await this.accessToken(callContext);
     const form = assetForm(asset);
-    const response = await this.context.execute(
+    const response = await this.request(
       uploadCoverOperation,
       {
         url: tokenUrl(this.context.settings.baseUrl, "/cgi-bin/material/add_material", token, {
@@ -257,7 +279,7 @@ class DirectWeixinClient implements WeixinClient {
     callContext: CallContext = {},
   ): Promise<string> {
     const token = await this.accessToken(callContext);
-    const response = await this.context.execute(
+    const response = await this.request(
       uploadContentOperation,
       {
         url: tokenUrl(this.context.settings.baseUrl, "/cgi-bin/media/uploadimg", token),
@@ -276,7 +298,7 @@ class DirectWeixinClient implements WeixinClient {
     callContext: CallContext = {},
   ): Promise<WeixinDraftResult> {
     const token = await this.accessToken(callContext);
-    const response = await this.context.execute(
+    const response = await this.request(
       createDraftOperation,
       {
         url: tokenUrl(this.context.settings.baseUrl, "/cgi-bin/draft/add", token),
@@ -316,7 +338,7 @@ class DirectWeixinClient implements WeixinClient {
     url.searchParams.set("grant_type", "client_credential");
     url.searchParams.set("appid", this.context.credentials.appId);
     url.searchParams.set("secret", this.context.credentials.appSecret);
-    const response = await this.context.execute(tokenOperation, { url: url.href }, callContext);
+    const response = await this.request(tokenOperation, { url: url.href }, callContext);
     const data = assertWeixinResponse<Partial<TokenResponse>>(response.json());
     if (!data.access_token || typeof data.expires_in !== "number") {
       throw invalidResponse("微信未返回有效 access_token");
@@ -327,22 +349,45 @@ class DirectWeixinClient implements WeixinClient {
     };
     return this.token.value;
   }
+
+  private request(
+    operation:
+      | typeof tokenOperation
+      | typeof uploadCoverOperation
+      | typeof uploadContentOperation
+      | typeof createDraftOperation,
+    request: HttpRequest,
+    callContext: CallContext,
+  ): Promise<HttpResponse> {
+    return this.proxyTransport
+      ? this.context.executeWithTransport(this.proxyTransport, operation, request, callContext)
+      : this.context.execute(operation, request, callContext);
+  }
 }
 
 class RelayWeixinClient implements WeixinClient {
   constructor(private readonly context: ConnectorCreateContext<RelaySettings, RelayCredentials>) {}
 
   async check(callContext: CallContext = {}): Promise<string> {
-    await this.request<{ result: string | boolean }>("/api/weixin/validate-ip", {}, callContext);
+    const result = await this.request<{ result: string | boolean; protocolVersion?: number }>(
+      "/api/weixin/validate-ip",
+      {},
+      callContext,
+    );
+    if (result.protocolVersion !== WEIXIN_RELAY_PROTOCOL_VERSION) {
+      throw invalidResponse("微信 Relay 版本过旧，请升级 Relay 后重试");
+    }
     return "连接成功，微信 Relay 可用";
   }
 
   async uploadCover(asset: WeixinAssetInput, callContext: CallContext = {}): Promise<string> {
-    const result = await this.request<{ mediaId: string }>(
+    const payload = await assetPayload(asset);
+    const result = await this.request<{ mediaId: string; receivedChecksum?: string }>(
       "/api/weixin/upload-image",
-      assetPayload(asset),
+      payload,
       callContext,
     );
+    assertRelayAssetReceipt(result.receivedChecksum, payload.checksum);
     return result.mediaId;
   }
 
@@ -350,11 +395,13 @@ class RelayWeixinClient implements WeixinClient {
     asset: WeixinAssetInput,
     callContext: CallContext = {},
   ): Promise<string> {
-    const result = await this.request<{ url: string }>(
+    const payload = await assetPayload(asset);
+    const result = await this.request<{ url: string; receivedChecksum?: string }>(
       "/api/weixin/upload-content-image",
-      assetPayload(asset),
+      payload,
       callContext,
     );
+    assertRelayAssetReceipt(result.receivedChecksum, payload.checksum);
     return result.url;
   }
 
@@ -366,6 +413,7 @@ class RelayWeixinClient implements WeixinClient {
       publishId?: string;
       mediaId?: string;
       url?: string;
+      coverMediaId?: string;
     }>(
       "/api/weixin/publish",
       {
@@ -376,6 +424,9 @@ class RelayWeixinClient implements WeixinClient {
       },
       callContext,
     );
+    if (result.coverMediaId !== input.coverMediaId) {
+      throw relayReceiptMismatch("微信 Relay 未确认草稿使用了本次上传的封面素材，请升级 Relay");
+    }
     const mediaId = result.mediaId ?? result.publishId;
     if (!mediaId) throw invalidResponse("微信 Relay 未返回草稿 ID");
     return { mediaId, url: result.url, raw: result as JsonObject };
@@ -452,13 +503,35 @@ function assetForm(asset: WeixinAssetInput): FormData {
   return form;
 }
 
-function assetPayload(asset: WeixinAssetInput) {
+async function assetPayload(asset: WeixinAssetInput) {
   return {
     imageUrl: asset.sourceUrl,
     imageBufferBase64: bytesToBase64(asset.bytes),
     mimeType: asset.mimeType,
     filename: asset.filename,
+    checksum: await sha256(asset.bytes),
   };
+}
+
+function assertRelayAssetReceipt(received: string | undefined, expected: string): void {
+  if (received !== expected) {
+    throw relayReceiptMismatch("微信 Relay 未确认收到本次上传的图片，请升级 Relay 后重试");
+  }
+}
+
+function relayReceiptMismatch(message: string): ConnectorError {
+  return new ConnectorError({
+    kind: "invalid_response",
+    message,
+    outcome: ConnectorOutcome.Unknown,
+  });
+}
+
+async function sha256(bytes: Uint8Array): Promise<string> {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", buffer));
+  return [...digest].map((value) => value.toString(16).padStart(2, "0")).join("");
 }
 
 function bytesToBase64(bytes: Uint8Array): string {

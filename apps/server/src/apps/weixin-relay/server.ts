@@ -11,6 +11,7 @@ import { serveFetch } from "@trendpublish/core/node";
 import { redactSensitiveText } from "@trendpublish/core/utilities";
 
 const logger = new Logger("weixin-relay");
+const WEIXIN_RELAY_PROTOCOL_VERSION = 2;
 const config = initializeAppConfig();
 if (!config.server.apiKey.trim()) throw new Error("weixin-relay 需要 server.apiKey");
 const port = Number(process.env.PORT ?? config.server.port ?? 8080);
@@ -31,16 +32,28 @@ serveFetch({ port }, async (request) => {
     const body = await readRequest(request);
     const client = createClient(body.account);
     if (request.method === "POST" && url.pathname === "/api/weixin/validate-ip") {
-      return ok({ result: await client.check() });
+      return ok({
+        result: await client.check(),
+        protocolVersion: WEIXIN_RELAY_PROTOCOL_VERSION,
+      });
     }
     if (request.method === "POST" && url.pathname === "/api/weixin/upload-image") {
-      return ok({ mediaId: await client.uploadCover(await assetInput(body.payload)) });
+      const asset = await verifiedAssetInput(body.payload);
+      return ok({
+        mediaId: await client.uploadCover(asset.input),
+        receivedChecksum: asset.checksum,
+      });
     }
     if (request.method === "POST" && url.pathname === "/api/weixin/upload-content-image") {
-      return ok({ url: await client.uploadContentImage(await assetInput(body.payload)) });
+      const asset = await verifiedAssetInput(body.payload);
+      return ok({
+        url: await client.uploadContentImage(asset.input),
+        receivedChecksum: asset.checksum,
+      });
     }
     if (request.method === "POST" && url.pathname === "/api/weixin/publish") {
-      return ok(await client.createDraft(draftInput(body.payload)));
+      const draft = draftInput(body.payload);
+      return ok({ ...(await client.createDraft(draft)), coverMediaId: draft.coverMediaId });
     }
     return Response.json({ success: false, error: "Not Found" }, { status: 404 });
   } catch (error) {
@@ -104,6 +117,17 @@ async function assetInput(payload: Record<string, unknown>): Promise<WeixinAsset
   };
 }
 
+async function verifiedAssetInput(
+  payload: Record<string, unknown>,
+): Promise<{ input: WeixinAssetInput; checksum: string }> {
+  const input = await assetInput(payload);
+  const checksum = await sha256(input.bytes);
+  if (typeof payload.checksum !== "string" || payload.checksum !== checksum) {
+    throw new Error("图片校验和不一致，Relay 已拒绝上传");
+  }
+  return { input, checksum };
+}
+
 function draftInput(payload: Record<string, unknown>): WeixinDraftInput {
   const required = (key: string) => {
     const value = payload[key];
@@ -134,6 +158,13 @@ async function authorized(request: Request, expected: string): Promise<boolean> 
 
 function base64Bytes(value: string): Uint8Array {
   return Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
+}
+
+async function sha256(bytes: Uint8Array): Promise<string> {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", buffer));
+  return [...digest].map((value) => value.toString(16).padStart(2, "0")).join("");
 }
 
 function ok(data: unknown): Response {

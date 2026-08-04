@@ -24,7 +24,7 @@ export function buildCloudflareDeps(env: CloudflareEnv): HttpDeps {
       return env.SERVER_API_KEY;
     },
     async getRuntime() {
-      return runtime;
+      return await runtime;
     },
     dashboardApp: buildCloudflareDashboardApp(env),
   };

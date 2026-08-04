@@ -7,6 +7,7 @@ import {
   updateContentPlan,
 } from "#platform/api/content-plans.ts";
 import type { ContentPlan, SaveContentPlanPayload } from "#platform/api/types.ts";
+import { DefaultContentPlanTemplateId } from "#platform/api/types.ts";
 import { Copy, Eye, Plus } from "lucide-react";
 import { useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
 import { Button } from "#components/ui/button.tsx";
@@ -49,12 +50,20 @@ function useDuplicateContentPlan() {
       createContentPlan({
         name: `${plan.name} (副本)`,
         enabled: false,
+        templateId: plan.templateId ?? DefaultContentPlanTemplateId,
         identityId: plan.identityId,
         knowledgeBaseIds: plan.knowledgeBaseIds ?? [],
         sourceCollectionIds: plan.sourceCollectionIds,
-        plugins: structuredClone(plan.plugins),
         connections: { ...plan.connections },
         researchConnections: plan.researchConnections ?? { search: [], fetch: [] },
+        agent: plan.agent
+          ? {
+              ...plan.agent,
+              toolConnectionIds: [...plan.agent.toolConnectionIds],
+              enhancementToolIds: [...plan.agent.enhancementToolIds],
+              budget: plan.agent.budget ? { ...plan.agent.budget } : undefined,
+            }
+          : undefined,
         publishing: { ...plan.publishing },
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: contentPlansKey() }),
@@ -105,12 +114,15 @@ function ContentPlansPage() {
       >
         {plans.map((plan) => {
           const identity = workspace?.identities.find((item) => item.id === plan.identityId);
-          const publishing = plan.publishing ?? { mode: "content_only" as const, targetIds: [] };
+          const template = workspace?.contentPlanTemplates.find(
+            (item) => item.id === (plan.templateId ?? DefaultContentPlanTemplateId),
+          );
+          const destinations = plan.publishing?.destinations ?? [];
           return (
             <EntityRow
               key={plan.id}
               title={plan.name}
-              description={`${identity?.name ?? "身份缺失"} · ${plan.knowledgeBaseIds?.length ?? 0} 个知识库 · ${plan.sourceCollectionIds.length} 个抓取源 · ${plan.plugins.filter((item) => item.enabled).length} 个插件 · ${publishing.mode === "publish" ? `${publishing.targetIds.length} 个发布目标` : "仅生成内容"}`}
+              description={`${identity?.name ?? "身份缺失"} · ${template?.name ?? "每日资讯解读"} · ${plan.knowledgeBaseIds?.length ?? 0} 个知识库 · ${plan.sourceCollectionIds.length} 个输入来源 · ${destinations.length ? `${destinations.length} 个发布目的地` : "仅生成内容包"}`}
               status={plan.enabled ? "ready" : "disabled"}
               onDelete={() => confirm(`删除"${plan.name}"？`) && remove.mutate(plan.id)}
             >

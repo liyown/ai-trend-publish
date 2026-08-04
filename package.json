@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@trendpublish/agent": "workspace:*",
     "@trendpublish/article": "workspace:*",
     "@trendpublish/connectors": "workspace:*",
     "@trendpublish/contracts": "workspace:*",

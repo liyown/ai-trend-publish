@@ -11,8 +11,7 @@
     "./print-relay-systemd": "./src/print-relay-systemd.ts"
   },
   "scripts": {
-    "check": "vp check",
-    "test": "vp test"
+    "check": "vp check"
   },
   "dependencies": {
     "@trendpublish/contracts": "workspace:*",

@@ -1,21 +1,23 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { WorkspaceKind } from "@trendpublish/contracts";
-import { createWorkspaceEntity, type Automation } from "@trendpublish/core/workspace";
-import { factory, type AppVariables } from "../deps.ts";
+import { type Automation, createWorkspaceEntity } from "@trendpublish/core/workspace";
+import { type AppVariables, factory } from "../deps.ts";
 import { HttpError, jsonValidator } from "../middleware/errors.ts";
 import { objectIdParam, saveAutomationSchema } from "../schemas/studio.ts";
 import {
+  paginate,
+  parsePage,
   removeWorkspaceDocument,
   updateWorkspaceDocument,
   withoutRevision,
 } from "./workspace-route-helpers.ts";
 
-const listAutomations = factory.createHandlers(async (c) =>
-  c.json({
-    automations: await (await c.var.deps.getRuntime()).workspace.list(WorkspaceKind.Automation),
-  }),
-);
+const listAutomations = factory.createHandlers(async (c) => {
+  const { page, pageSize } = parsePage(c.req.queries());
+  const all = await (await c.var.deps.getRuntime()).workspace.list(WorkspaceKind.Automation);
+  return c.json(paginate(all, page, pageSize));
+});
 
 const createAutomation = factory.createHandlers(
   zValidator("json", saveAutomationSchema, jsonValidator),

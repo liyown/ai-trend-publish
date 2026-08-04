@@ -7,8 +7,18 @@ import { HttpError, jsonValidator } from "../middleware/errors.ts";
 import { objectIdParam, saveConnectionSchema } from "../schemas/studio.ts";
 
 const list = factory.createHandlers(async (c) => {
-  const manager = (await c.var.deps.getRuntime()).connectionManager;
-  return c.json({ definitions: manager.definitions(), connections: await manager.list() });
+  const runtime = await c.var.deps.getRuntime();
+  const channelConnectorIds = new Set(
+    runtime.channels.definitions().flatMap((channel) => channel.connectorIds),
+  );
+  return c.json({
+    definitions: runtime.connectionManager
+      .definitions()
+      .filter((definition) => !channelConnectorIds.has(definition.id)),
+    connections: (await runtime.connectionManager.list()).filter(
+      (connection) => connection.metadata["managedBy"] !== "channel-account",
+    ),
+  });
 });
 
 const create = factory.createHandlers(
@@ -53,14 +63,21 @@ const remove = factory.createHandlers(
       plans.some(
         (plan) =>
           Object.values(plan.connections).includes(id) ||
+          plan.agent?.modelConnectionId === id ||
+          plan.agent?.toolConnectionIds.includes(id) ||
           plan.researchConnections?.search.includes(id) ||
           plan.researchConnections?.fetch.includes(id),
       )
     ) {
       throw new HttpError("连接正在被内容方案使用", 409);
     }
-    if (accounts.some((account) => account.connectionId === id)) {
-      throw new HttpError("连接正在被渠道账号使用", 409);
+    if (
+      accounts.some(
+        (account) =>
+          account.connectionId === id || account.publisher?.toolConnectionIds.includes(id),
+      )
+    ) {
+      throw new HttpError("连接正在被发布账号使用", 409);
     }
     await runtime.connectionManager.remove(id);
     return c.json({ success: true });

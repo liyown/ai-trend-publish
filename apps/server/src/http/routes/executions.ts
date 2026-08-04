@@ -1,17 +1,12 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { JobType, type ArticleSource, type AssetRequest } from "@trendpublish/contracts";
-import { JobClaimKind, JobStatus, type RuntimeEvent } from "@trendpublish/runtime";
-import type {
-  CompleteArticleInput,
-  GenerateArticleInput,
-  PublishContentInput,
-  RunAutomationInput,
-} from "@trendpublish/core/application";
-import { factory, type AppVariables } from "../deps.ts";
+import { JobType, RunKind, RunTriggerKind, WorkspaceKind } from "@trendpublish/contracts";
+import { fingerprint, JobClaimKind, JobStatus, type RuntimeEvent } from "@trendpublish/runtime";
+import type { GenerateArticleInput } from "@trendpublish/article/application";
+import type { PublishContentInput, RunAutomationInput } from "@trendpublish/core/application";
+import { type AppVariables, factory } from "../deps.ts";
 import { HttpError, jsonValidator } from "../middleware/errors.ts";
 import {
-  completeArticleSchema,
   generateArticleSchema,
   jobIdParam,
   objectIdParam,
@@ -19,9 +14,12 @@ import {
   runAutomationSchema,
 } from "../schemas/studio.ts";
 
+import { paginate, parsePage } from "./workspace-route-helpers.ts";
+
 const listJobs = factory.createHandlers(async (c) => {
-  const jobs = await (await c.var.deps.getRuntime()).jobs.list(undefined, 200);
-  return c.json({ jobs });
+  const { page, pageSize } = parsePage(c.req.queries());
+  const all = await (await c.var.deps.getRuntime()).jobs.list(undefined, 50000);
+  return c.json(paginate(all, page, pageSize));
 });
 
 const getJob = factory.createHandlers(zValidator("param", jobIdParam, jsonValidator), async (c) => {
@@ -109,11 +107,31 @@ const startArticleGeneration = factory.createHandlers(
   zValidator("json", generateArticleSchema, jsonValidator),
   async (c) => {
     const runtime = await c.var.deps.getRuntime();
-    const job = await runtime.articles.createGenerateJob(
-      c.req.valid("json") as GenerateArticleInput,
+    const input = c.req.valid("json") as GenerateArticleInput;
+    const plan = await runtime.workspace.get(WorkspaceKind.ContentPlan, input.planId);
+    if (!plan || !plan.enabled) throw new HttpError("内容方案不存在或已停用", 400);
+    const run = await runtime.runs.createRun({
+      kind: RunKind.Content,
+      trigger: { kind: RunTriggerKind.Debug },
+      planId: plan.id,
+      planRevision: plan.revision,
+      planName: plan.name,
+      requestedTopic: input.requestedTopic,
+    });
+    await runtime.runs.createMainSession(run.id);
+    await createPublicationSessions(runtime, run.id, plan.publishing.destinations);
+    const job = await runtime.automations.createRunJob(
+      {
+        contentPlanId: plan.id,
+        requestedTopic: input.requestedTopic,
+        metadata: input.metadata,
+      },
+      {
+        runId: run.id,
+      },
     );
-    runtime.background.start(`article:${job.id}`, () => runtime.articles.resume(job.id));
-    return c.json({ job }, 202);
+    runtime.background.start(`content-plan:${job.id}`, () => runtime.automations.resume(job.id));
+    return c.json({ job, run: (await runtime.runs.getDetail(run.id))!.run }, 202);
   },
 );
 
@@ -135,11 +153,11 @@ const resumeArticle = factory.createHandlers(
       return c.json({ job: claim.record }, 202);
     }
 
-    if (job.type === JobType.CompleteArticle) {
-      const claim = await runtime.articles.claimCompletionJob(jobId);
+    if (job.type === JobType.RunAutomation) {
+      const claim = await runtime.automations.claimRunJob(jobId);
       if (claim.kind === JobClaimKind.Claimed) {
-        runtime.background.start(`article-completion:${claim.record.id}`, () =>
-          runtime.articles.executeClaimedCompletion(claim.record),
+        runtime.background.start(`content-plan:${claim.record.id}`, () =>
+          runtime.automations.executeClaimedRun(claim.record),
         );
       }
       return c.json({ job: claim.record }, 202);
@@ -149,34 +167,38 @@ const resumeArticle = factory.createHandlers(
   },
 );
 
-const startArticleCompletion = factory.createHandlers(
-  zValidator("json", completeArticleSchema, jsonValidator),
-  async (c) => {
-    const body = c.req.valid("json");
-    const input: CompleteArticleInput = {
-      planId: body.planId,
-      source: body.source as ArticleSource,
-      assetRequests: body.assetRequests as AssetRequest[],
-      reviewRequestId: body.reviewRequestId,
-    };
-    const runtime = await c.var.deps.getRuntime();
-    const job = await runtime.articles.createCompletionJob(input);
-    runtime.background.start(`article-completion:${job.id}`, () =>
-      runtime.articles.resumeCompletion(job.id),
-    );
-    return c.json({ job }, 202);
-  },
-);
-
 const startPublication = factory.createHandlers(
   zValidator("json", publishContentSchema, jsonValidator),
   async (c) => {
     const runtime = await c.var.deps.getRuntime();
-    const job = await runtime.publishing.createPublishJob(
-      c.req.valid("json") as PublishContentInput,
+    const input = c.req.valid("json") as PublishContentInput;
+    const storedPackage = await runtime.workspace.get(
+      WorkspaceKind.ContentPackage,
+      input.packageId,
+    );
+    if (!storedPackage) throw new HttpError("内容包不存在", 404);
+    const originJob = await runtime.jobs.get(storedPackage.jobId);
+    const plan = await runtime.workspace.get(WorkspaceKind.ContentPlan, storedPackage.planId);
+    const run = await runtime.runs.createRun({
+      kind: RunKind.Publication,
+      trigger: { kind: RunTriggerKind.Manual },
+      packageId: input.packageId,
+      originRunId: originJob?.runId,
+      planId: plan?.id,
+      planRevision: plan?.revision,
+      planName: plan?.name,
+    });
+    const publicationSessions = await createPublicationSessions(
+      runtime,
+      run.id,
+      input.destinations,
+    );
+    const job = await runtime.publishing.createPublishJob(input, { runId: run.id });
+    await Promise.all(
+      publicationSessions.map((session) => runtime.runs.attachJob(run.id, session.id, job.id)),
     );
     runtime.background.start(`publication:${job.id}`, () => runtime.publishing.resume(job.id));
-    return c.json({ job }, 202);
+    return c.json({ job, run: (await runtime.runs.getDetail(run.id))!.run }, 202);
   },
 );
 
@@ -199,12 +221,28 @@ const startAutomationRun = factory.createHandlers(
   zValidator("json", runAutomationSchema, jsonValidator),
   async (c) => {
     const runtime = await c.var.deps.getRuntime();
-    const job = await runtime.automations.createRunJob({
+    const automationId = c.req.valid("param").id;
+    const automation = await runtime.workspace.get(WorkspaceKind.Automation, automationId);
+    if (!automation) throw new HttpError("自动化任务不存在", 404);
+    const plan = await runtime.workspace.get(WorkspaceKind.ContentPlan, automation.contentPlanId);
+    if (!plan) throw new HttpError("自动化任务绑定的内容方案不存在", 400);
+    const input = {
       automationId: c.req.valid("param").id,
       ...c.req.valid("json"),
-    } as RunAutomationInput);
+    } as RunAutomationInput;
+    const run = await runtime.runs.createRun({
+      kind: RunKind.Content,
+      trigger: { kind: RunTriggerKind.Automation, automationId },
+      planId: plan.id,
+      planRevision: plan.revision,
+      planName: plan.name,
+      requestedTopic: input.requestedTopic,
+    });
+    await runtime.runs.createMainSession(run.id);
+    await createPublicationSessions(runtime, run.id, plan.publishing.destinations);
+    const job = await runtime.automations.createRunJob(input, { runId: run.id });
     runtime.background.start(`automation:${job.id}`, () => runtime.automations.resume(job.id));
-    return c.json({ job }, 202);
+    return c.json({ job, run: (await runtime.runs.getDetail(run.id))!.run }, 202);
   },
 );
 
@@ -227,7 +265,6 @@ export const executionRoutes = new Hono<{ Variables: AppVariables }>()
   .get("/api/jobs/:jobId", ...getJob)
   .get("/api/jobs/:jobId/events", ...streamJobEvents)
   .post("/api/articles", ...startArticleGeneration)
-  .post("/api/articles/complete", ...startArticleCompletion)
   .post("/api/articles/:jobId/resume", ...resumeArticle)
   .post("/api/publications", ...startPublication)
   .post("/api/publications/:jobId/resume", ...resumePublication)
@@ -253,5 +290,35 @@ function isTerminalJobStatus(status: unknown): boolean {
     status === JobStatus.Degraded ||
     status === JobStatus.Failed ||
     status === JobStatus.NeedsAttention
+  );
+}
+
+async function createPublicationSessions(
+  runtime: Awaited<ReturnType<AppVariables["deps"]["getRuntime"]>>,
+  runId: string,
+  destinations: PublishContentInput["destinations"],
+) {
+  return await Promise.all(
+    destinations.map(async (selection) => {
+      const account = await runtime.workspace.get(
+        WorkspaceKind.ChannelAccount,
+        selection.accountId,
+      );
+      const channel = account?.channel ?? "unknown";
+      const checksum = await fingerprint({
+        accountId: selection.accountId,
+        channel,
+        publicationType: selection.publicationType,
+        options: selection.options ?? {},
+      });
+      return await runtime.runs.ensurePublicationSession(runId, {
+        destinationId: `destination_${checksum.slice(0, 24)}`,
+        accountId: selection.accountId,
+        accountName: account?.name ?? "发布账号",
+        channel,
+        publicationType: selection.publicationType,
+        options: selection.options,
+      });
+    }),
   );
 }

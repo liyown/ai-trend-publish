@@ -9,6 +9,7 @@ import { contentConfigRoutes } from "./routes/content-config-routes.ts";
 import { executionRoutes } from "./routes/executions.ts";
 import { healthRoutes } from "./routes/health.ts";
 import { publishingConfigRoutes } from "./routes/publishing-config-routes.ts";
+import { runRoutes } from "./routes/runs.ts";
 
 export function createHttpApp(deps: HttpDeps): Hono<{ Variables: AppVariables }> {
   const inject = factory.createMiddleware(async (c, next) => {
@@ -28,6 +29,7 @@ export function createHttpApp(deps: HttpDeps): Hono<{ Variables: AppVariables }>
     .route("/", publishingConfigRoutes)
     .route("/", automationRoutes)
     .route("/", executionRoutes)
+    .route("/", runRoutes)
     .notFound((c) =>
       c.json({ error: "无效的 API 路径", data: { path: c.req.path, method: c.req.method } }, 404),
     );

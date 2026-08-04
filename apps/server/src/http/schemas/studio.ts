@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { ArticleSourceFormat } from "@trendpublish/contracts";
+import { ContentPlanTemplateId, type JsonValue } from "@trendpublish/contracts";
 
 export const idParam = z.string().trim().min(1).max(200);
 const revision = z.number().int().positive();
-const jsonValue: z.ZodType<unknown> = z.lazy(() =>
+const jsonValue: z.ZodType<JsonValue> = z.lazy(() =>
   z.union([
     z.string(),
     z.number().finite(),
@@ -89,16 +89,37 @@ export const saveContentPlanSchema = z
     revision: revision.optional(),
     name: z.string().trim().min(1).max(120),
     enabled: z.boolean(),
+    templateId: z
+      .enum([
+        ContentPlanTemplateId.DailyBrief,
+        ContentPlanTemplateId.DeepAnalysis,
+        ContentPlanTemplateId.PracticalGuide,
+      ])
+      .default(ContentPlanTemplateId.DailyBrief),
     identityId: idParam,
     knowledgeBaseIds: z.array(idParam).max(50).default([]),
     sourceCollectionIds: z.array(idParam).max(50),
-    plugins: z
-      .array(z.object({ pluginId: idParam, enabled: z.boolean(), config: jsonValue.optional() }))
-      .max(50)
-      .refine((items) => new Set(items.map((item) => item.pluginId)).size === items.length, {
-        message: "同一个插件不能重复添加",
-      }),
     connections: z.record(z.string().min(1).max(80), idParam),
+    agent: z
+      .object({
+        modelConnectionId: idParam,
+        strategyId: z.enum([
+          ContentPlanTemplateId.DailyBrief,
+          ContentPlanTemplateId.DeepAnalysis,
+          ContentPlanTemplateId.PracticalGuide,
+        ]),
+        toolConnectionIds: z.array(idParam).max(50).default([]),
+        enhancementToolIds: z
+          .array(z.enum(["remove-ai-tone", "optimize-style"]))
+          .max(20)
+          .default([]),
+        budget: z
+          .object({
+            maxTurns: z.number().int().min(1).max(100).optional(),
+          })
+          .optional(),
+      })
+      .optional(),
     researchConnections: z
       .object({
         search: z.array(idParam).max(20),
@@ -113,17 +134,27 @@ export const saveContentPlanSchema = z
       .default({ search: [], fetch: [] }),
     publishing: z
       .object({
-        mode: z.enum(["content_only", "publish"]),
-        targetIds: z.array(idParam).max(50),
+        destinations: z
+          .array(
+            z.object({
+              accountId: idParam,
+              publicationType: idParam,
+              options: settings.optional(),
+            }),
+          )
+          .max(50),
       })
-      .default({ mode: "content_only", targetIds: [] }),
+      .default({ destinations: [] }),
   })
   .superRefine((value, context) => {
-    if (value.publishing.mode === "publish" && !value.publishing.targetIds.length) {
+    const keys = value.publishing.destinations.map(
+      (destination) => `${destination.accountId}:${destination.publicationType}`,
+    );
+    if (new Set(keys).size !== keys.length) {
       context.addIssue({
         code: "custom",
-        path: ["publishing", "targetIds"],
-        message: "发布模式至少需要一个发布目标",
+        path: ["publishing", "destinations"],
+        message: "同一账号的发布类型不能重复添加",
       });
     }
   });
@@ -131,16 +162,21 @@ export const saveContentPlanSchema = z
 export const saveChannelAccountSchema = z.object({
   revision: revision.optional(),
   name: z.string().trim().min(1).max(120),
+  enabled: z.boolean().default(true),
   channel: idParam,
-  connectionId: idParam,
+  connectorId: idParam,
   settings,
+  credentials: settings.optional(),
+  clearCredentials: z.array(idParam).max(50).optional(),
+  publisher: z
+    .object({
+      toolConnectionIds: z.array(idParam).max(20).default([]),
+    })
+    .optional(),
 });
 
-export const savePublishTargetSchema = z.object({
-  revision: revision.optional(),
-  name: z.string().trim().min(1).max(120),
-  channelAccountId: idParam,
-  settings,
+export const testChannelAccountSchema = saveChannelAccountSchema.extend({
+  accountId: idParam.optional(),
 });
 
 export const saveAutomationSchema = z.object({
@@ -175,39 +211,32 @@ export const generateArticleSchema = z.object({
   requestedTopic: z.string().trim().min(1).max(500).optional(),
 });
 
-export const articleSourceSchema = z
+export const publishContentSchema = z
   .object({
-    format: z.literal(ArticleSourceFormat.Markdown),
-    title: z.string().trim().min(1).max(500),
-    digest: z.string().trim().min(1).max(2000),
-    bodyMarkdown: z.string().trim().min(1).max(2_000_000),
+    packageId: idParam,
+    destinations: z
+      .array(
+        z.object({
+          accountId: idParam,
+          publicationType: idParam,
+          options: settings.optional(),
+        }),
+      )
+      .min(1)
+      .max(50),
   })
-  .strict();
-
-export const assetRequestSchema = z
-  .object({
-    id: idParam,
-    type: z.enum(["cover", "illustration", "diagram", "chart"]),
-    necessity: z.enum(["enhancement", "essential"]),
-    brief: z.string().trim().min(1).max(10_000),
-    alt: z.string().trim().min(1).max(2_000).optional(),
-    caption: z.string().trim().min(1).max(4_000).optional(),
-  })
-  .strict();
-
-export const completeArticleSchema = z
-  .object({
-    planId: idParam,
-    source: articleSourceSchema,
-    assetRequests: z.array(assetRequestSchema).max(100),
-    reviewRequestId: idParam,
-  })
-  .strict();
-
-export const publishContentSchema = z.object({
-  packageId: idParam,
-  targetIds: z.array(idParam).min(1).max(50),
-});
+  .superRefine((value, context) => {
+    const keys = value.destinations.map(
+      (destination) => `${destination.accountId}:${destination.publicationType}`,
+    );
+    if (new Set(keys).size !== keys.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["destinations"],
+        message: "同一账号的发布类型不能重复添加",
+      });
+    }
+  });
 
 export const objectIdParam = z.object({ id: idParam });
 export const jobIdParam = z.object({ jobId: idParam });

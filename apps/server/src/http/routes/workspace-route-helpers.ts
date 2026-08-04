@@ -33,3 +33,28 @@ export function withoutRevision<T extends Record<string, any>>(body: T): Omit<T,
   const { revision: _revision, ...value } = body;
   return value;
 }
+
+export interface PageResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export function parsePage(query: Record<string, string | string[] | undefined>): {
+  page: number;
+  pageSize: number;
+} {
+  const page = Math.max(1, Number(firstQueryValue(query["page"])) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number(firstQueryValue(query["pageSize"])) || 20));
+  return { page, pageSize };
+}
+
+function firstQueryValue(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+export function paginate<T>(all: T[], page: number, pageSize: number): PageResult<T> {
+  const start = (page - 1) * pageSize;
+  return { items: all.slice(start, start + pageSize), total: all.length, page, pageSize };
+}

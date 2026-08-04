@@ -1,9 +1,8 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { ArticlePluginId, ChannelId, WorkspaceKind } from "@trendpublish/contracts";
+import { RunKind, WorkspaceKind, type RunRecord } from "@trendpublish/contracts";
 import {
   createWorkspaceEntity,
-  type ChannelAccount,
   type ContentIdentity,
   type ContentPlan,
   type KnowledgeBase,
@@ -24,11 +23,13 @@ import {
   withoutRevision,
 } from "./workspace-route-helpers.ts";
 
-const listIdentities = factory.createHandlers(async (c) =>
-  c.json({
-    identities: await (await c.var.deps.getRuntime()).workspace.list(WorkspaceKind.Identity),
-  }),
-);
+import { paginate, parsePage } from "./workspace-route-helpers.ts";
+
+const listIdentities = factory.createHandlers(async (c) => {
+  const { page, pageSize } = parsePage(c.req.queries());
+  const all = await (await c.var.deps.getRuntime()).workspace.list(WorkspaceKind.Identity);
+  return c.json(paginate(all, page, pageSize));
+});
 
 const createIdentity = factory.createHandlers(
   zValidator("json", saveIdentitySchema, jsonValidator),
@@ -72,13 +73,11 @@ const deleteIdentity = factory.createHandlers(
   },
 );
 
-const listKnowledgeBases = factory.createHandlers(async (c) =>
-  c.json({
-    knowledgeBases: await (
-      await c.var.deps.getRuntime()
-    ).workspace.list(WorkspaceKind.KnowledgeBase),
-  }),
-);
+const listKnowledgeBases = factory.createHandlers(async (c) => {
+  const { page, pageSize } = parsePage(c.req.queries());
+  const all = await (await c.var.deps.getRuntime()).workspace.list(WorkspaceKind.KnowledgeBase);
+  return c.json(paginate(all, page, pageSize));
+});
 
 const createKnowledgeBase = factory.createHandlers(
   zValidator("json", saveKnowledgeBaseSchema, jsonValidator),
@@ -137,13 +136,11 @@ const deleteKnowledgeBase = factory.createHandlers(
   },
 );
 
-const listSources = factory.createHandlers(async (c) =>
-  c.json({
-    sourceCollections: await (
-      await c.var.deps.getRuntime()
-    ).workspace.list(WorkspaceKind.SourceCollection),
-  }),
-);
+const listSources = factory.createHandlers(async (c) => {
+  const { page, pageSize } = parsePage(c.req.queries());
+  const all = await (await c.var.deps.getRuntime()).workspace.list(WorkspaceKind.SourceCollection);
+  return c.json(paginate(all, page, pageSize));
+});
 
 const createSources = factory.createHandlers(
   zValidator("json", saveSourceCollectionSchema, jsonValidator),
@@ -202,10 +199,34 @@ const deleteSources = factory.createHandlers(
   },
 );
 
-const listContentPlans = factory.createHandlers(async (c) =>
-  c.json({
-    contentPlans: await (await c.var.deps.getRuntime()).workspace.list(WorkspaceKind.ContentPlan),
-  }),
+const listContentPlans = factory.createHandlers(async (c) => {
+  const { page, pageSize } = parsePage(c.req.queries());
+  const all = await (await c.var.deps.getRuntime()).workspace.list(WorkspaceKind.ContentPlan);
+  return c.json(paginate(all, page, pageSize));
+});
+
+const getContentPackageRunContext = factory.createHandlers(
+  zValidator("param", objectIdParam, jsonValidator),
+  async (c) => {
+    const runtime = await c.var.deps.getRuntime();
+    const packageId = c.req.valid("param").id;
+    const contentPackage = await runtime.workspace.get(WorkspaceKind.ContentPackage, packageId);
+    if (!contentPackage) throw new HttpError("内容包不存在", 404);
+
+    const originJob = await runtime.jobs.get(contentPackage.jobId);
+    const allRuns = await runtime.runs.store.listRuns({}, 50_000);
+    const generationRun = resolveGenerationRun(allRuns, packageId, originJob?.runId);
+    const publicationRuns = allRuns
+      .filter(
+        (run) =>
+          run.kind === RunKind.Publication &&
+          (run.packageId === packageId ||
+            (generationRun ? run.originRunId === generationRun.id : false)),
+      )
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+
+    return c.json({ contentPackage, generationRun, publicationRuns });
+  },
 );
 
 const createContentPlan = factory.createHandlers(
@@ -273,7 +294,18 @@ export const contentConfigRoutes = new Hono<{ Variables: AppVariables }>()
   .get("/api/content-plans", ...listContentPlans)
   .post("/api/content-plans", ...createContentPlan)
   .patch("/api/content-plans/:id", ...updateContentPlan)
-  .delete("/api/content-plans/:id", ...deleteContentPlan);
+  .delete("/api/content-plans/:id", ...deleteContentPlan)
+  .get("/api/content-packages/:id/run-context", ...getContentPackageRunContext);
+
+function resolveGenerationRun(
+  runs: RunRecord[],
+  packageId: string,
+  originRunId?: string,
+): RunRecord | undefined {
+  const origin = originRunId ? runs.find((run) => run.id === originRunId) : undefined;
+  if (origin?.kind === RunKind.Content) return origin;
+  return runs.find((run) => run.kind === RunKind.Content && run.packageId === packageId);
+}
 
 async function validateContentPlan(
   runtime: Awaited<ReturnType<AppVariables["deps"]["getRuntime"]>>,
@@ -294,37 +326,19 @@ async function validateContentPlan(
       throw new HttpError(`内容方案绑定的知识库不存在：${knowledgeBaseId}`, 400);
     }
   }
-  const selectedAccounts: ChannelAccount[] = [];
-  for (const targetId of body.publishing?.targetIds ?? []) {
-    const target = await runtime.workspace.get(WorkspaceKind.PublishTarget, targetId);
-    if (!target) throw new HttpError(`内容方案绑定的发布目标不存在：${targetId}`, 400);
+  for (const destination of body.publishing?.destinations ?? []) {
     const account = await runtime.workspace.get(
       WorkspaceKind.ChannelAccount,
-      target.channelAccountId,
+      destination.accountId,
     );
-    if (!account) throw new HttpError(`发布目标 ${target.name} 绑定的渠道账号不存在`, 400);
-    selectedAccounts.push(account);
-  }
-  if (
-    body.publishing?.mode === "publish" &&
-    selectedAccounts.some((account) => account.channel === ChannelId.WeixinOfficialAccount)
-  ) {
-    const cover = body.plugins.find(
-      (plugin: { pluginId: string; enabled: boolean; config?: unknown }) =>
-        plugin.pluginId === ArticlePluginId.CoverImage,
-    );
-    if (!cover?.enabled) {
-      throw new HttpError("微信公众号发布必须启用封面图片插件", 400);
-    }
-    const necessity =
-      cover.config && typeof cover.config === "object" && !Array.isArray(cover.config)
-        ? (cover.config as Record<string, unknown>).necessity
-        : undefined;
-    if (necessity !== undefined && necessity !== "essential") {
-      throw new HttpError("微信公众号发布必须将封面设为必要资源", 400);
-    }
-    if (!body.connections.image) {
-      throw new HttpError("微信公众号发布必须绑定图片连接", 400);
+    if (!account)
+      throw new HttpError(`内容方案绑定的发布账号不存在：${destination.accountId}`, 400);
+    if (account.enabled === false) throw new HttpError(`发布账号 ${account.name} 已停用`, 400);
+    try {
+      runtime.channels.getProfile(account.channel, destination.publicationType);
+      runtime.channels.getAdapter(account.channel, destination.publicationType);
+    } catch (error) {
+      throw new HttpError(error instanceof Error ? error.message : String(error), 400);
     }
   }
   const connections = new Map(
@@ -344,7 +358,31 @@ async function validateContentPlan(
       throw new HttpError(`连接 ${connection.name} 不支持 ${capability} 能力`, 400);
     }
   }
-  if (!body.connections.chat) throw new HttpError("内容方案必须绑定 chat 连接", 400);
+  const modelConnectionId = body.agent?.modelConnectionId ?? body.connections.chat;
+  if (!modelConnectionId) throw new HttpError("内容方案必须绑定生成模型连接", 400);
+  const modelConnection = connections.get(modelConnectionId);
+  if (!modelConnection?.enabled) throw new HttpError("生成模型连接不存在或已禁用", 400);
+  const modelCapabilities = definitions.get(modelConnection.connectorId)?.capabilities ?? [];
+  if (!modelCapabilities.includes("chat")) {
+    throw new HttpError(`连接 ${modelConnection.name} 不支持 chat 能力`, 400);
+  }
+  if (body.agent && !modelCapabilities.includes("tool-calling")) {
+    throw new HttpError(`连接 ${modelConnection.name} 不支持原生 Tool Calling`, 400);
+  }
+  if (body.agent) {
+    for (const connectionId of body.agent.toolConnectionIds) {
+      const connection = connections.get(connectionId);
+      if (!connection?.enabled) throw new HttpError(`工具连接不存在或已禁用：${connectionId}`, 400);
+      const capabilities = definitions.get(connection.connectorId)?.capabilities ?? [];
+      if (
+        !capabilities.some((capability) =>
+          ["source-search", "source-fetch", "image"].includes(capability),
+        )
+      ) {
+        throw new HttpError(`连接 ${connection.name} 没有可供内容 Agent 使用的工具能力`, 400);
+      }
+    }
+  }
   const enabledSources = sourceCollections
     .filter((collection) => collection.enabled)
     .flatMap((collection) => collection.sources)
@@ -352,6 +390,7 @@ async function validateContentPlan(
   const needsSearch = enabledSources.some((source) => source.kind === "query");
   const needsFetch = enabledSources.length > 0;
   const selected = body.researchConnections ?? { search: [], fetch: [] };
+  if (body.agent) return;
   validateResearchConnections("source-search", selected.search ?? [], needsSearch);
   validateResearchConnections("source-fetch", selected.fetch ?? [], needsFetch);
 

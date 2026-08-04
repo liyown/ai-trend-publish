@@ -6,8 +6,8 @@ TrendPublish is a TypeScript modular monolith for high-quality content generatio
 
 - `packages/runtime` is business-agnostic. It owns jobs, tasks, checkpoints, replay and unknown side-effect states.
 - `packages/connectors` owns external API protocol mapping, connection definitions and one-call clients. Clients do not implement retries, scheduling or business orchestration.
-- `packages/article` owns `ContentPackage v4`, annotated Markdown source, the document compiler, the article harness and article plugin contracts. It does not publish.
-- `packages/publishing` owns channel accounts, publish targets and channel adapters. It consumes frozen content packages and publishes each target independently.
+- `packages/article` owns `ContentPackage v5`, the shared content ReAct session, annotated Markdown source, the document compiler and asset production. It does not publish.
+- `packages/publishing` owns the internal channel registry and channel adapters. It consumes frozen content packages and publishes each destination independently.
 - `packages/core` is the application layer and workspace model. It coordinates article and publishing use cases without importing server delivery code.
 - `apps/server` is the composition root and HTTP delivery layer. Local uses SQLite; Cloudflare uses D1.
 - `apps/dashboard` talks only to the HTTP API.
@@ -33,7 +33,7 @@ Use Vite+ tasks from `vite.config.ts`. Before handing off a change, run `vp run 
 ## Extension paths
 
 - New external API: add a Connector definition and typed capability client under `packages/connectors/src/builtins` or a separate package, then register it at the composition root.
-- New article behavior: keep the harness flow stable. Use an `ArticleTransformer` for source changes, an `ArticleEvaluator` for read-only quality checks, or an `AssetProvider` for resource production. Do not introduce a generic processor or strategy hierarchy.
+- New article behavior: add model-driven research, writing and repair to the shared ReAct agent; add deterministic source invariants to its terminal validation; use an `AssetProvider` only for resource production. Do not add a second evaluator/reviser loop outside the agent.
 - New channel: add a channel adapter in `packages/publishing` and register it in local and Cloudflare runtimes.
 - New business object or use case: add it to the workspace/application layer, expose it through `apps/server/src/http`, then add a Dashboard page.
 

@@ -2,16 +2,23 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { test } from "vite-plus/test";
 import { assertEquals } from "@trendpublish/core/test";
 
-test("fresh deployments have one modular schema migration", async () => {
+test("fresh deployments include modular runtime and ReAct run migrations", async () => {
   const migrations = (await readdir("migrations")).filter((file) => file.endsWith(".sql"));
-  assertEquals(migrations, ["0001_modular_runtime.sql"]);
-  const schema = await readFile(`migrations/${migrations[0]}`, "utf8");
+  assertEquals(migrations, ["0001_modular_runtime.sql", "0002_react_runs.sql"]);
+  const schema = (
+    await Promise.all(migrations.map((migration) => readFile(`migrations/${migration}`, "utf8")))
+  ).join("\n");
   for (const table of [
     "workspace_documents",
     "connector_connections",
     "connector_credentials",
     "runtime_jobs",
     "runtime_tasks",
+    "runtime_runs",
+    "runtime_run_sessions",
+    "runtime_run_activities",
+    "runtime_run_activity_sequences",
+    "internal_schema_versions",
   ]) {
     assertEquals(schema.includes(table), true, `${table} missing from schema`);
   }

@@ -119,7 +119,9 @@ test("packages expose only named public entry points", async () => {
 
 test("cross-package imports use stable public entry points", async () => {
   const allowed = new Set([
+    "@trendpublish/agent",
     "@trendpublish/article",
+    "@trendpublish/article/application",
     "@trendpublish/connectors",
     "@trendpublish/contracts",
     "@trendpublish/contracts/article",
@@ -148,6 +150,7 @@ test("cross-package imports use stable public entry points", async () => {
   ]);
   const violations: string[] = [];
   for (const relativeDir of ["apps", "packages", "scripts", "tests"]) {
+    if (!(await pathExists(join(ROOT, relativeDir)))) continue;
     for await (const path of walkSourceFiles(join(ROOT, relativeDir))) {
       const content = await readFile(path, "utf8");
       for (const specifier of packageSpecifiers(content)) {

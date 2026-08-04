@@ -8,7 +8,7 @@ import type {
 
 export * from "@trendpublish/contracts/article";
 
-/** Ephemeral AST view used by transformers, evaluators and revision. */
+/** Ephemeral AST view used by deterministic compilation and asset production. */
 export interface ArticleView {
   sourceHash: string;
   title: string;

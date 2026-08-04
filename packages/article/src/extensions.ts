@@ -4,19 +4,22 @@ import type {
   ArticleView,
   AssetRequest,
   ContentAsset,
-  ContentDiagnostic,
   ContentIdentitySnapshot,
   EditorialBrief,
-  EvidenceUnit,
   MaterialSnapshot,
   NoContent,
   WorkingArticle,
 } from "./domain.ts";
+import type { ContentReactAgentResult } from "./react-content-agent.ts";
 
 export interface ArticleOperationContext {
   task: TaskContext;
   signal: AbortSignal;
   now(): Date;
+}
+
+export interface ArticleReactAgent {
+  produce(input: ArticleInput, task: TaskContext): Promise<ContentReactAgentResult>;
 }
 
 export type ResearchSource = { type: "query"; query: string } | { type: "url"; url: string };
@@ -91,68 +94,6 @@ export interface ArticleTransformer {
       view: Readonly<ArticleView>;
       brief: Readonly<EditorialBrief>;
       identity: Readonly<ContentIdentitySnapshot>;
-    },
-    context: ArticleOperationContext,
-  ): Promise<WorkingArticle>;
-}
-
-export interface EvidenceNeed {
-  id: string;
-  diagnosticCode: string;
-  question: string;
-}
-
-export interface ArticleEvaluation {
-  diagnostics: ContentDiagnostic[];
-  evidenceNeeds: EvidenceNeed[];
-}
-
-/** Read-only semantic quality plugin. */
-export interface ArticleEvaluator {
-  id: string;
-  version: string;
-  evaluate(
-    input: {
-      article: Readonly<WorkingArticle>;
-      view: Readonly<ArticleView>;
-      brief: Readonly<EditorialBrief>;
-      identity: Readonly<ContentIdentitySnapshot>;
-    },
-    context: ArticleOperationContext,
-  ): Promise<ArticleEvaluation>;
-}
-
-/** Adds frozen, locatable evidence for issues identified by evaluators. */
-export interface ArticleEvidenceSupplementer {
-  id: string;
-  version: string;
-  supplement(
-    input: {
-      article: Readonly<WorkingArticle>;
-      view: Readonly<ArticleView>;
-      brief: Readonly<EditorialBrief>;
-      identity: Readonly<ContentIdentitySnapshot>;
-      needs: Readonly<EvidenceNeed[]>;
-    },
-    context: ArticleOperationContext,
-  ): Promise<{
-    materials: MaterialSnapshot[];
-    evidence: EvidenceUnit[];
-  }>;
-}
-
-/** The single editorial revision port used by the bounded quality loop. */
-export interface ArticleReviser {
-  id: string;
-  version: string;
-  revise(
-    input: {
-      article: Readonly<WorkingArticle>;
-      view: Readonly<ArticleView>;
-      brief: Readonly<EditorialBrief>;
-      identity: Readonly<ContentIdentitySnapshot>;
-      diagnostics: Readonly<ContentDiagnostic[]>;
-      addedEvidenceIds: Readonly<string[]>;
     },
     context: ArticleOperationContext,
   ): Promise<WorkingArticle>;

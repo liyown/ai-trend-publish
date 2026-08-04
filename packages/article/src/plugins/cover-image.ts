@@ -61,7 +61,7 @@ export interface CoverImageGenerationContext {
 }
 
 export interface CoverImageProviderOptions {
-  generator: CoverImageGenerator;
+  generator?: CoverImageGenerator;
   style?: string;
   fetcher?: typeof fetch;
 }
@@ -85,14 +85,29 @@ export class CoverImageProvider implements AssetProvider {
       `账号定位：${input.identity.positioning}`,
       `视觉风格：${this.options.style ?? "克制、现代、编辑感，不要文字和水印"}`,
     ].join("。 ");
-    const generated = await this.options.generator.generate(
-      { title: input.article.source.title, prompt },
-      {
-        signal: context.signal,
-        jobId: context.task.jobId,
-        ...(context.task.taskId ? { taskId: context.task.taskId } : {}),
-      },
-    );
+    let generated: Awaited<ReturnType<CoverImageGenerator["generate"]>> & {
+      fallback?: boolean;
+    };
+    try {
+      if (!this.options.generator) throw new Error("没有配置图片连接");
+      generated = await this.options.generator.generate(
+        { title: input.article.source.title, prompt },
+        {
+          signal: context.signal,
+          jobId: context.task.jobId,
+          ...(context.task.taskId ? { taskId: context.task.taskId } : {}),
+        },
+      );
+    } catch (error) {
+      if (context.signal.aborted) throw error;
+      generated = {
+        uri: DEFAULT_COVER_DATA_URI,
+        mimeType: "image/png",
+        width: 900,
+        height: 383,
+        fallback: true,
+      };
+    }
     const frozen = await materializeGeneratedImage(
       generated,
       context.signal,
@@ -109,9 +124,15 @@ export class CoverImageProvider implements AssetProvider {
       height: generated.height,
       alt: input.request.alt ?? `${input.article.source.title}封面`,
       caption: input.request.caption,
+      ...(generated.fallback ? { metadata: { fallback: true } } : {}),
     };
   }
 }
+
+// A neutral 900x383 PNG keeps channel-required cover creation publishable when an image
+// connector is absent or temporarily unavailable. It is intentionally text-free.
+const DEFAULT_COVER_DATA_URI =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA4QAAAF/CAMAAAAmWvf6AAAAA1BMVEUYJjqwnZWEAAABZUlEQVR42u3BMQEAAADCoPVPbQ0PoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA4MURGAAFVW6AAAAAAAElFTkSuQmCC";
 
 async function materializeGeneratedImage(
   generated: Awaited<ReturnType<CoverImageGenerator["generate"]>>,

@@ -12,10 +12,8 @@ import type {
   WorkingArticle,
 } from "../domain.ts";
 import type {
-  ArticleEvidenceSupplementer,
   ArticleOperationContext,
   ArticleResearcher,
-  ArticleReviser,
   ArticleWriter,
   ConfiguredResearchSeed,
   ResearchOutcome,
@@ -23,11 +21,7 @@ import type {
   ResearchTool,
 } from "../extensions.ts";
 import { parseModelJson, type LanguageModel } from "../operations/language-model.ts";
-import {
-  deduplicateMaterials,
-  ResearchCollector,
-  type ResearchInstruction,
-} from "./research-collector.ts";
+import { ResearchCollector, type ResearchInstruction } from "./research-collector.ts";
 
 export interface DefaultArticleResearcherOptions {
   languageModel: LanguageModel;
@@ -179,7 +173,7 @@ export class DefaultArticleWriter implements ArticleWriter {
   ): Promise<WorkingArticle> {
     const response = parseModelJson<CompositionModelOutput>(
       await this.options.languageModel.generate({
-        system: `${identityPrompt(input.identity)}\n你是成熟的中文内容作者。只使用 brief 中的证据；事实引用必须写成 [来源](evidence://证据ID)。正文使用 Markdown。若需要资源，只能在 assetRequests 中声明，并在对应位置写 ![说明](asset-request://请求ID)。返回 JSON：title、digest、bodyMarkdown、assetRequests。`,
+        system: `${identityPrompt(input.identity)}\n你是成熟的中文内容作者。有证据时只使用 brief 中的证据，事实引用写成 [来源](evidence://证据ID)；没有证据时仍需完成一篇可发布文章，但只能写分析框架、经验判断和行动建议，明确不确定性，不得虚构外部事实、数据或来源。正文使用 Markdown。若需要资源，只能在 assetRequests 中声明，并在对应位置写 ![说明](asset-request://请求ID)。返回 JSON：title、digest、bodyMarkdown、assetRequests。`,
         user: JSON.stringify({
           brief: briefForWriting(input.brief),
           instructions: input.request.metadata?.instructions,
@@ -202,148 +196,6 @@ export class DefaultArticleWriter implements ArticleWriter {
   }
 }
 
-export interface DefaultEvidenceSupplementerOptions {
-  languageModel: LanguageModel;
-  tools?: ResearchTool[];
-}
-
-export class DefaultEvidenceSupplementer implements ArticleEvidenceSupplementer {
-  readonly id = "default-evidence-supplementer";
-  readonly version = "1";
-
-  constructor(private readonly options: DefaultEvidenceSupplementerOptions) {}
-
-  async supplement(
-    input: Parameters<ArticleEvidenceSupplementer["supplement"]>[0],
-    context: ArticleOperationContext,
-  ): Promise<{ materials: MaterialSnapshot[]; evidence: EvidenceUnit[] }> {
-    const tools = this.options.tools ?? [];
-    const searchTools = tools.filter((tool) => tool.capability === "search");
-    if (!input.needs.length || !searchTools.length) return { materials: [], evidence: [] };
-
-    const limit = Math.min(3, input.needs.length);
-    const queries = await context.task.run(
-      {
-        id: "plan-queries",
-        version: "1",
-        input: {
-          needs: input.needs,
-          topic: input.brief.topic,
-          thesis: input.brief.thesis,
-          limit,
-        },
-        optional: true,
-        fallback: () => Promise.resolve(input.needs.map((need) => need.question).slice(0, limit)),
-      },
-      async (signal, task) => {
-        const result = parseModelJson<{ queries?: string[] }>(
-          await this.options.languageModel.generate({
-            system:
-              "你是证据补充检索规划员。根据文章论点和证据需求生成少量互不重复、适合事实核查的搜索查询。不要写 URL。返回 JSON：{queries:string[]}。",
-            user: JSON.stringify({
-              topic: input.brief.topic,
-              thesis: input.brief.thesis,
-              needs: input.needs,
-              limit,
-            }),
-            temperature: 0.15,
-            json: true,
-            signal,
-            events: task,
-          }),
-        );
-        return textArray(result.queries).slice(0, limit);
-      },
-    );
-
-    const { materials: collected } = await new ResearchCollector({
-      tools,
-      maxMaterials: 12,
-      maxCandidatesPerQuery: 4,
-    }).collect(
-      queries.map((query) => ({ source: { type: "query", query } })),
-      [],
-      context,
-    );
-
-    const existingMaterialIds = new Set(input.brief.materials.map((material) => material.id));
-    const existingMaterialHashes = new Set(
-      input.brief.materials.map((material) => material.contentHash),
-    );
-    const materials = deduplicateMaterials(collected).filter(
-      (material) =>
-        !existingMaterialIds.has(material.id) && !existingMaterialHashes.has(material.contentHash),
-    );
-    if (!materials.length) return { materials: [], evidence: [] };
-
-    const response = parseModelJson<EvidenceSupplementModelOutput>(
-      await this.options.languageModel.generate({
-        system:
-          "你是证据补充编辑。只选择能直接回应 evidenceNeeds 的材料。excerpt 必须逐字来自对应 material 的 content，不得创造事实。返回 JSON：{evidence:[{statement,materialId,excerpt}]}。",
-        user: JSON.stringify({
-          evidenceNeeds: input.needs,
-          materials: materials.map(materialForPrompt),
-        }),
-        temperature: 0.1,
-        json: true,
-        signal: context.signal,
-        events: context.task,
-      }),
-    );
-    const evidence = await normalizeEvidence(response.evidence, materials);
-    const existingEvidenceIds = new Set(input.brief.evidence.map((item) => item.id));
-    return {
-      materials,
-      evidence: evidence.filter((item) => !existingEvidenceIds.has(item.id)),
-    };
-  }
-}
-
-export interface DefaultArticleReviserOptions {
-  languageModel: LanguageModel;
-}
-
-export class DefaultArticleReviser implements ArticleReviser {
-  readonly id = "default-reviser";
-  readonly version = "1";
-
-  constructor(private readonly options: DefaultArticleReviserOptions) {}
-
-  async revise(
-    input: Parameters<ArticleReviser["revise"]>[0],
-    context: ArticleOperationContext,
-  ): Promise<WorkingArticle> {
-    const response = parseModelJson<CompositionModelOutput>(
-      await this.options.languageModel.generate({
-        system:
-          "你是文章修订编辑。只修复给定问题，保留正确事实和有效表达；不得创造 Evidence ID，不得引入研究材料之外的新事实。返回完整 JSON：title、digest、bodyMarkdown、assetRequests。",
-        user: JSON.stringify({
-          article: input.article,
-          diagnostics: input.diagnostics,
-          brief: briefForWriting(input.brief),
-          addedEvidenceIds: input.addedEvidenceIds,
-        }),
-        temperature: 0.3,
-        json: true,
-        signal: context.signal,
-        events: context.task,
-      }),
-    );
-    return {
-      source: {
-        format: ArticleSourceFormat.Markdown,
-        title: response.title?.trim() || input.article.source.title,
-        digest: response.digest?.trim() || input.article.source.digest,
-        bodyMarkdown: response.bodyMarkdown?.trim() || input.article.source.bodyMarkdown,
-      },
-      assetRequests:
-        response.assetRequests === undefined
-          ? structuredClone(input.article.assetRequests)
-          : normalizeAssetRequests(response.assetRequests),
-    };
-  }
-}
-
 interface ResearchModelOutput {
   publishable?: boolean;
   reason?: string;
@@ -358,10 +210,6 @@ interface ResearchModelOutput {
     materialId?: string;
     excerpt?: string;
   }>;
-}
-
-interface EvidenceSupplementModelOutput {
-  evidence?: ResearchModelOutput["evidence"];
 }
 
 interface CompositionModelOutput {

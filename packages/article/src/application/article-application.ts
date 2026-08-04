@@ -3,13 +3,7 @@ import {
   type ArticlePipelineResult,
   type ArticleExecutionPlan,
 } from "../pipeline.ts";
-import type {
-  type ArticleInput,
-  type ArticleMetadataValue,
-  type ArticleSource,
-  type AssetRequest,
-  type MaterialSnapshot,
-} from "../domain.ts";
+import type { ArticleInput, ArticleMetadataValue, MaterialSnapshot } from "../domain.ts";
 import {
   ArticleResultKind,
   JobType,
@@ -29,14 +23,13 @@ import {
   type JobRecord,
   type JobStore,
   type RuntimeEventPublisher,
+  type RunManager,
   type TaskStore,
 } from "@trendpublish/runtime";
 import {
   createWorkspaceEntity,
-  reviseWorkspaceEntity,
   type ContentPlan,
   type StoredContentPackage,
-  type StoredReviewRequest,
   type WorkspaceRepository,
   saveFinalArtifact,
 } from "./workspace.ts";
@@ -51,21 +44,10 @@ export interface GenerateArticleInput {
   metadata?: Record<string, ArticleMetadataValue>;
 }
 
-export interface CompleteArticleInput {
-  planId: string;
-  source: ArticleSource;
-  assetRequests: AssetRequest[];
-  reviewRequestId: string;
-}
-
-export type ArticleJobOutput =
-  | { resultKind: typeof ArticleResultKind.ContentPackage; artifactId: string }
-  | { resultKind: typeof ArticleResultKind.ReviewRequest; artifactId: string }
-  | {
-      resultKind: typeof ArticleResultKind.NoContent;
-      reason: string;
-      details?: Record<string, ArticleMetadataValue>;
-    };
+export type ArticleJobOutput = {
+  resultKind: typeof ArticleResultKind.ContentPackage;
+  artifactId: string;
+};
 
 export interface ArticleApplicationOptions {
   workspace: WorkspaceRepository;
@@ -75,6 +57,7 @@ export interface ArticleApplicationOptions {
   pipeline?: ArticlePipeline;
   now?: () => Date;
   events?: RuntimeEventPublisher;
+  runs?: Pick<RunManager, "onTaskActivity" | "completeContent">;
 }
 
 export class ArticleApplication {
@@ -85,7 +68,11 @@ export class ArticleApplication {
   constructor(private readonly options: ArticleApplicationOptions) {
     this.now = options.now ?? (() => new Date());
     this.pipeline = options.pipeline ?? new ArticlePipeline({ now: this.now });
-    this.taskRunner = new TaskRunner(options.tasks, { now: this.now, events: options.events });
+    this.taskRunner = new TaskRunner(options.tasks, {
+      now: this.now,
+      events: options.events,
+      activities: options.runs,
+    });
   }
 
   async generate(
@@ -97,12 +84,13 @@ export class ArticleApplication {
 
   createGenerateJob(
     input: GenerateArticleInput,
-    options: { jobId?: string } = {},
+    options: { jobId?: string; runId?: string; sessionId?: string; parentJobId?: string } = {},
   ): Promise<JobRecord<GenerateArticleInput, ArticleJobOutput>> {
     const job = createJob<GenerateArticleInput, ArticleJobOutput>(
       JobType.GenerateArticle,
       input,
       this.now(),
+      { runId: options.runId, sessionId: options.sessionId, parentJobId: options.parentJobId },
     );
     return this.options.jobs.create(options.jobId ? { ...job, id: options.jobId } : job);
   }
@@ -126,81 +114,6 @@ export class ArticleApplication {
   ): Promise<JobRecord<GenerateArticleInput, ArticleJobOutput>> {
     this.assertClaimed(job, JobType.GenerateArticle);
     return this.runGenerate(job);
-  }
-
-  async completeEditedSource(
-    input: CompleteArticleInput,
-  ): Promise<JobRecord<CompleteArticleInput, ArticleJobOutput>> {
-    const job = await this.createCompletionJob(input);
-    return await this.resumeCompletion(job.id);
-  }
-
-  createCompletionJob(
-    input: CompleteArticleInput,
-  ): Promise<JobRecord<CompleteArticleInput, ArticleJobOutput>> {
-    return this.options.jobs.create(
-      createJob<CompleteArticleInput, ArticleJobOutput>(JobType.CompleteArticle, input, this.now()),
-    );
-  }
-
-  async resumeCompletion(
-    jobId: string,
-  ): Promise<JobRecord<CompleteArticleInput, ArticleJobOutput>> {
-    const claim = await this.claimCompletionJob(jobId);
-    if (claim.kind !== JobClaimKind.Claimed) return claim.record;
-    return await this.executeClaimedCompletion(claim.record);
-  }
-
-  claimCompletionJob(jobId: string): Promise<JobClaim<CompleteArticleInput, ArticleJobOutput>> {
-    return this.options.jobs.claim({
-      id: jobId,
-      type: JobType.CompleteArticle,
-      now: this.now().toISOString(),
-    });
-  }
-
-  executeClaimedCompletion(
-    job: JobRecord<CompleteArticleInput, ArticleJobOutput>,
-  ): Promise<JobRecord<CompleteArticleInput, ArticleJobOutput>> {
-    this.assertClaimed(job, JobType.CompleteArticle);
-    return this.runComplete(job);
-  }
-
-  private async runComplete(
-    job: JobRecord<CompleteArticleInput, ArticleJobOutput>,
-  ): Promise<JobRecord<CompleteArticleInput, ArticleJobOutput>> {
-    const input = job.input;
-    const running = job;
-    try {
-      const plan = await this.requirePlan(input.planId);
-      const storedReview = await this.options.workspace.get(
-        WorkspaceKind.ReviewRequest,
-        input.reviewRequestId,
-      );
-      if (!storedReview || storedReview.status !== "open") {
-        throw new Error("待审请求不存在或已经处理");
-      }
-      if (storedReview.planId !== plan.id) throw new Error("待审请求不属于当前内容方案");
-      const executionPlan = await this.options.planResolver.resolve(plan);
-      const result = await this.pipeline.complete({
-        input: {
-          identity: storedReview.request.identity,
-          materials: storedReview.request.brief.materials,
-          requestedAt: job.createdAt,
-          metadata: { reviewRequestId: storedReview.id },
-        },
-        brief: storedReview.request.brief,
-        article: {
-          source: structuredClone(input.source),
-          assetRequests: structuredClone(input.assetRequests),
-        },
-        plan: executionPlan,
-        task: this.taskRunner.forJob(job.id),
-      });
-      return await this.finishArticleJob(running, plan, result, storedReview.id);
-    } catch (error) {
-      return await this.failArticleJob(running, error);
-    }
   }
 
   private async runGenerate(
@@ -250,57 +163,7 @@ export class ArticleApplication {
     running: JobRecord<TInput, ArticleJobOutput>,
     plan: ContentPlan,
     result: ArticlePipelineResult,
-    previousReviewRequestId?: string,
   ): Promise<JobRecord<TInput, ArticleJobOutput>> {
-    if (result.kind === ArticleResultKind.NoContent) {
-      return await this.options.jobs.update(
-        finishJob(
-          running,
-          JobStatus.Succeeded,
-          {
-            output: {
-              resultKind: ArticleResultKind.NoContent,
-              reason: result.noContent.reason,
-              details: result.noContent.details,
-            },
-          },
-          this.now(),
-        ),
-      );
-    }
-
-    if (result.kind === ArticleResultKind.ReviewRequest) {
-      const stored = createWorkspaceEntity<
-        Omit<StoredReviewRequest, "revision" | "createdAt" | "updatedAt">
-      >(
-        {
-          id: result.reviewRequest.id,
-          jobId: running.id,
-          planId: plan.id,
-          status: "open",
-          request: result.reviewRequest,
-        },
-        this.now(),
-      );
-      await saveFinalArtifact(this.options.workspace, WorkspaceKind.ReviewRequest, stored);
-      if (previousReviewRequestId && previousReviewRequestId !== stored.id) {
-        await this.updateReviewStatus(previousReviewRequestId, "dismissed");
-      }
-      return await this.options.jobs.update(
-        finishJob(
-          running,
-          JobStatus.Succeeded,
-          {
-            output: {
-              resultKind: ArticleResultKind.ReviewRequest,
-              artifactId: stored.id,
-            },
-          },
-          this.now(),
-        ),
-      );
-    }
-
     const stored = createWorkspaceEntity<
       Omit<StoredContentPackage, "revision" | "createdAt" | "updatedAt">
     >(
@@ -313,37 +176,17 @@ export class ArticleApplication {
       this.now(),
     );
     await saveFinalArtifact(this.options.workspace, WorkspaceKind.ContentPackage, stored);
-    if (previousReviewRequestId) {
-      await this.updateReviewStatus(previousReviewRequestId, "resolved", stored.id);
+    if (running.runId) {
+      await this.options.runs?.completeContent(running.runId, {
+        packageId: stored.id,
+        title: result.contentPackage.document.title,
+      });
     }
     return await this.options.jobs.update(
       finishJob(
         running,
         JobStatus.Succeeded,
         { output: { resultKind: ArticleResultKind.ContentPackage, artifactId: stored.id } },
-        this.now(),
-      ),
-    );
-  }
-
-  private async updateReviewStatus(
-    reviewRequestId: string,
-    status: "resolved" | "dismissed",
-    resolvedPackageId?: string,
-  ): Promise<void> {
-    const review = await this.options.workspace.get(WorkspaceKind.ReviewRequest, reviewRequestId);
-    if (!review || review.status !== "open") return;
-    await this.options.workspace.save(
-      WorkspaceKind.ReviewRequest,
-      reviseWorkspaceEntity(
-        review,
-        {
-          jobId: review.jobId,
-          planId: review.planId,
-          status,
-          request: review.request,
-          ...(resolvedPackageId ? { resolvedPackageId } : {}),
-        },
         this.now(),
       ),
     );

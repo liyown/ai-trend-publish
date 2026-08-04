@@ -79,6 +79,20 @@ test("cover provider normalizes generated Data URIs into the same frozen represe
   expect(asset.checksum).toBe(await computeContentAssetChecksum(expectedBytes));
 });
 
+test("cover provider uses a valid frozen fallback when image generation is unavailable", async () => {
+  const provider = new CoverImageProvider({});
+
+  const asset = await provider.provide(providerInput(), operationContext());
+  const decoded = decodeContentDataUri(asset.source.uri);
+
+  expect(asset.mimeType).toBe("image/png");
+  expect(asset.width).toBe(900);
+  expect(asset.height).toBe(383);
+  expect(asset.metadata).toEqual({ fallback: true });
+  expect(decoded.bytes.byteLength).toBeGreaterThan(0);
+  expect(asset.checksum).toBe(await computeContentAssetChecksum(decoded.bytes));
+});
+
 function providerInput(): Parameters<CoverImageProvider["provide"]>[0] {
   return {
     request: {

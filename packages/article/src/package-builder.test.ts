@@ -5,18 +5,12 @@ import type { ArticleCompilation } from "./compiler.ts";
 import type { BuildContentPackageInput } from "./package-builder.ts";
 import { ContentPackageBuildError, ContentPackageBuilder } from "./package-builder.ts";
 
-test("package building independently rejects missing citations and invalid evidence locators", async () => {
+test("package building drops invalid unused evidence and allows content without citations", async () => {
   const input = await buildInput();
-  const error = await new ContentPackageBuilder()
-    .build(input)
-    .then(() => undefined)
-    .catch((reason: unknown) => reason);
+  const contentPackage = await new ContentPackageBuilder(() => "test").build(input);
 
-  expect(error).toBeInstanceOf(ContentPackageBuildError);
-  if (error instanceof ContentPackageBuildError) {
-    expect(error.reasons).toContain("Document 至少需要引用一条有效证据");
-    expect(error.reasons).toContain("证据 evidence-1 的文本摘录不在素材 material-1 中");
-  }
+  expect(contentPackage.id).toBe("content_test");
+  expect(contentPackage.evidence).toEqual([]);
 });
 
 test("package building requires a canonical asset SHA-256 and verifies inline bytes", async () => {

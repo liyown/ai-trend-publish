@@ -1,14 +1,10 @@
 import { expect, test } from "vite-plus/test";
-import { ArticleSourceFormat, TaskStatus } from "@trendpublish/contracts";
+import { TaskStatus } from "@trendpublish/contracts";
 import { MemoryTaskStore, TaskRunner } from "@trendpublish/runtime";
 import type { ArticleInput, MaterialSnapshot } from "../domain.ts";
 import type { LanguageModelRequest } from "../operations/language-model.ts";
 import type { ResearchSource, ResearchTool } from "../extensions.ts";
-import {
-  DefaultArticleResearcher,
-  DefaultArticleWriter,
-  DefaultEvidenceSupplementer,
-} from "./default-article-services.ts";
+import { DefaultArticleResearcher, DefaultArticleWriter } from "./default-article-services.ts";
 
 const input: ArticleInput = {
   identity: {
@@ -174,105 +170,6 @@ test("writer receives the brief without full material bodies", async () => {
 
   expect(requests[0]?.user.includes("不应再次发送给 Writer 的完整素材正文")).toBe(false);
   expect(requests[0]?.user.includes("evidence-1")).toBe(true);
-});
-
-test("evidence supplementer reuses a supporting research tool and returns locatable evidence", async () => {
-  const collected: ResearchSource[] = [];
-  let modelCalls = 0;
-  const supplementer = new DefaultEvidenceSupplementer({
-    languageModel: {
-      async generate() {
-        modelCalls += 1;
-        if (modelCalls === 1) return JSON.stringify({ queries: ["公开测试 申请 门槛"] });
-        return JSON.stringify({
-          evidence: [
-            {
-              statement: "个人开发者无需申请即可试用",
-              materialId: "material-supplement",
-              excerpt: "个人开发者无需申请即可试用",
-            },
-          ],
-        });
-      },
-    },
-    tools: [
-      {
-        capability: "search",
-        id: "search",
-        version: "1",
-        async search(query) {
-          collected.push({ type: "query", query });
-          return [
-            {
-              id: "candidate-1",
-              title: "公开测试说明",
-              url: "https://example.com/public-preview",
-              snippet: "这个摘要不能直接成为证据",
-            },
-          ];
-        },
-      },
-      {
-        capability: "fetch",
-        id: "fetch",
-        version: "1",
-        async fetch(url) {
-          collected.push({ type: "url", url });
-          return [snapshot("material-supplement", "公开测试后，个人开发者无需申请即可试用。")];
-        },
-      },
-    ],
-  });
-
-  const result = await supplementer.supplement(
-    {
-      article: {
-        source: {
-          format: ArticleSourceFormat.Markdown,
-          title: "标题",
-          digest: "摘要",
-          bodyMarkdown: "正文",
-        },
-        assetRequests: [],
-      },
-      view: {} as never,
-      brief: {
-        topic: "公开测试",
-        angle: "采用门槛",
-        rationale: "解释影响",
-        thesis: "公开测试降低采用门槛",
-        outline: ["影响"],
-        materials: [],
-        evidence: [],
-        gaps: [],
-      },
-      identity: input.identity,
-      needs: [
-        {
-          id: "need-impact",
-          diagnosticCode: "evidence.impact_missing",
-          question: "公开测试对采用门槛产生了什么影响？",
-        },
-      ],
-    },
-    {
-      task: new TaskRunner(new MemoryTaskStore(), { now: fixedNow }).forJob("supplement"),
-      signal: new AbortController().signal,
-      now: fixedNow,
-    },
-  );
-
-  expect(collected).toEqual([
-    { type: "query", query: "公开测试 申请 门槛" },
-    { type: "url", url: "https://example.com/public-preview" },
-  ]);
-  expect(result.materials.map((material) => material.id)).toEqual(["material-supplement"]);
-  expect(result.evidence).toHaveLength(1);
-  expect(result.evidence[0]?.materialId).toBe("material-supplement");
-  expect(result.evidence[0]?.locator).toEqual({
-    type: "text",
-    excerpt: "个人开发者无需申请即可试用",
-  });
 });
 
 test("one research source failure is a gap when other material is usable", async () => {

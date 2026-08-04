@@ -13,6 +13,33 @@ export interface EvidenceLocatorIssue {
   message: string;
 }
 
+/** Keeps only uniquely identified material and evidence that can safely enter a frozen package. */
+export function selectPublishableEvidence(
+  materials: MaterialSnapshot[],
+  evidence: EvidenceUnit[],
+): { materials: MaterialSnapshot[]; evidence: EvidenceUnit[] } {
+  const materialCounts = occurrenceCounts(materials);
+  const publishableMaterials = materials.filter(
+    (material) => material.id.trim() && materialCounts.get(material.id) === 1,
+  );
+  const materialById = new Map(publishableMaterials.map((material) => [material.id, material]));
+  const evidenceCounts = occurrenceCounts(evidence);
+  const publishableEvidence = evidence.filter((item) => {
+    const material = materialById.get(item.materialId);
+    return Boolean(
+      item.id.trim() &&
+      evidenceCounts.get(item.id) === 1 &&
+      item.statement.trim() &&
+      material &&
+      evidenceLocatorIssues(item, material).length === 0,
+    );
+  });
+  return {
+    materials: structuredClone(publishableMaterials),
+    evidence: structuredClone(publishableEvidence),
+  };
+}
+
 /** Validates that an evidence locator is usable and agrees with its captured material. */
 export function evidenceLocatorIssues(
   evidence: EvidenceUnit,
@@ -74,4 +101,10 @@ export function evidenceLocatorIssues(
     }
   }
   return issues;
+}
+
+function occurrenceCounts(values: Array<{ id: string }>): Map<string, number> {
+  const result = new Map<string, number>();
+  for (const value of values) result.set(value.id, (result.get(value.id) ?? 0) + 1);
+  return result;
 }

@@ -1,5 +1,5 @@
-import { ArticleResultKind, ArticleSchemaVersion, DiagnosticCode } from "@trendpublish/contracts";
-import { describeUnknown, fingerprint, type TaskContext } from "@trendpublish/runtime";
+import { ArticleResultKind, DiagnosticCode } from "@trendpublish/contracts";
+import { describeUnknown, type TaskContext } from "@trendpublish/runtime";
 import {
   ArticleCompiler,
   normalizeDiagnostics,
@@ -7,18 +7,13 @@ import {
   type AssetResolution,
 } from "./compiler.ts";
 import { isContentAssetChecksum } from "./asset-integrity.ts";
-import { evidenceLocatorIssues } from "./evidence.ts";
 import type {
-  ArticleEvaluation,
-  ArticleEvidenceSupplementer,
-  ArticleEvaluator,
   ArticleOperationContext,
   ArticleResearcher,
-  ArticleReviser,
+  ArticleReactAgent,
   ArticleTransformer,
   ArticleWriter,
   AssetProvider,
-  EvidenceNeed,
 } from "./extensions.ts";
 import { ContentPackageBuilder, type ContentPackageOrigin } from "./package-builder.ts";
 import type {
@@ -29,11 +24,8 @@ import type {
   ContentDiagnostic,
   ContentPackage,
   EditorialBrief,
-  EvidenceUnit,
-  MaterialSnapshot,
-  NoContent,
+  MasterContent,
   QualityReport,
-  ReviewRequest,
   WorkingArticle,
 } from "./domain.ts";
 import { isBlockingDiagnostic } from "./domain.ts";
@@ -44,17 +36,14 @@ export interface ArticleExecutionPlan {
   parentPackageId?: string;
   /** Channel-neutral asset capabilities that every successful package from this plan must contain. */
   requiredAssetTypes?: AssetRequestType[];
-  researcher: ArticleResearcher;
-  writer: ArticleWriter;
+  /** Preferred execution engine. When present, the fixed research/write stages are bypassed. */
+  agent?: ArticleReactAgent;
+  /** @deprecated Legacy fixed-pipeline port; new workspace plans always use agent. */
+  researcher?: ArticleResearcher;
+  /** @deprecated Legacy fixed-pipeline port; new workspace plans always use agent. */
+  writer?: ArticleWriter;
   transformers?: ArticleTransformer[];
-  evaluators?: ArticleEvaluator[];
-  evidenceSupplementer?: ArticleEvidenceSupplementer;
-  reviser?: ArticleReviser;
   assetProviders?: Partial<Record<AssetRequestType, AssetProvider>>;
-  quality?: {
-    policyVersion?: string;
-    maxQualityRounds?: number;
-  };
 }
 
 export interface RunArticlePipelineRequest {
@@ -72,10 +61,10 @@ export interface CompleteWorkingArticleRequest {
   task: TaskContext;
 }
 
-export type ArticlePipelineResult =
-  | { kind: typeof ArticleResultKind.NoContent; noContent: NoContent }
-  | { kind: typeof ArticleResultKind.ReviewRequest; reviewRequest: ReviewRequest }
-  | { kind: typeof ArticleResultKind.ContentPackage; contentPackage: ContentPackage };
+export type ArticlePipelineResult = {
+  kind: typeof ArticleResultKind.ContentPackage;
+  contentPackage: ContentPackage;
+};
 
 export interface ArticlePipelineOptions {
   compiler?: ArticleCompiler;
@@ -84,7 +73,7 @@ export interface ArticlePipelineOptions {
   idFactory?: () => string;
 }
 
-/** Fixed article production line: research, compose, transform, quality and build. */
+/** Runs the shared ReAct session and deterministically builds its publishable content package. */
 export class ArticlePipeline {
   private readonly compiler: ArticleCompiler;
   private readonly packageBuilder: ContentPackageBuilder;
@@ -100,12 +89,15 @@ export class ArticlePipeline {
 
   async run(request: RunArticlePipelineRequest): Promise<ArticlePipelineResult> {
     validateExecutionPlan(request.plan);
-    const research = await this.research(request);
-    if (research.kind === "no-content") {
-      return { kind: ArticleResultKind.NoContent, noContent: research.noContent };
+    if (request.plan.agent) {
+      const produced = await request.plan.agent.produce(request.input, request.task.scope("react"));
+      return await this.finish(request, produced.brief, produced.article, [], produced.master);
     }
-
-    const brief = research.brief;
+    const research = await this.research(request);
+    const brief =
+      research.kind === "brief"
+        ? research.brief
+        : fallbackEditorialBrief(request.input, research.noContent.reason);
     const composed = await this.compose(request, brief);
     const transformed = await this.transform(request, brief, composed);
     return await this.finish(request, brief, transformed.article, transformed.warnings);
@@ -122,34 +114,15 @@ export class ArticlePipeline {
     brief: EditorialBrief,
     article: WorkingArticle,
     operationalWarnings: ContentDiagnostic[],
+    master?: MasterContent,
   ): Promise<ArticlePipelineResult> {
     const requiredArticle = ensureRequiredAssetRequests(article, request.plan.requiredAssetTypes);
-    const qualityResult = await this.runQualityLoop(
-      request,
-      brief,
-      requiredArticle,
-      operationalWarnings,
-    );
-    if (qualityResult.kind === "rejected") {
-      const reviewRequest = await this.createReviewRequest(
-        request,
-        qualityResult.brief,
-        qualityResult.article,
-        qualityResult.quality,
-        "quality/review-request",
-      );
-      return { kind: ArticleResultKind.ReviewRequest, reviewRequest };
-    }
-    return await this.build(
-      request,
-      qualityResult.brief,
-      qualityResult.article,
-      qualityResult.quality,
-    );
+    return await this.build(request, brief, requiredArticle, operationalWarnings, master);
   }
 
   private async research(request: RunArticlePipelineRequest) {
     const researcher = request.plan.researcher;
+    if (!researcher) throw new Error("旧流水线缺少 Researcher");
     return await request.task.run(
       {
         id: "research",
@@ -173,6 +146,7 @@ export class ArticlePipeline {
     brief: EditorialBrief,
   ): Promise<WorkingArticle> {
     const writer = request.plan.writer;
+    if (!writer) throw new Error("旧流水线缺少 Writer");
     return await request.task.run(
       {
         id: "compose",
@@ -260,274 +234,13 @@ export class ArticlePipeline {
     return { article, warnings };
   }
 
-  private async runQualityLoop(
-    request: RunArticlePipelineRequest,
-    initialBrief: EditorialBrief,
-    initial: WorkingArticle,
-    operationalWarnings: ContentDiagnostic[],
-  ): Promise<QualityLoopResult> {
-    const maxRounds = Math.max(0, request.plan.quality?.maxQualityRounds ?? 2);
-    const policyVersion = request.plan.quality?.policyVersion ?? "1";
-    const seen = new Set<string>();
-    const qualityWarnings = structuredClone(operationalWarnings);
-    let brief = structuredClone(initialBrief);
-    let article = structuredClone(initial);
-
-    for (let round = 0; ; round += 1) {
-      const inspection = await this.compiler.inspect({
-        article,
-        evidence: brief.evidence,
-        materials: brief.materials,
-      });
-      const evaluation = await this.evaluate(request, brief, article, inspection, round);
-      const diagnostics = normalizeDiagnostics([
-        ...inspection.diagnostics,
-        ...qualityWarnings.map((warning) => ({
-          ...warning,
-          sourceHash: inspection.view.sourceHash,
-        })),
-        ...evaluation.diagnostics,
-      ]);
-      const blockers = diagnostics.filter(isBlockingDiagnostic);
-      if (!blockers.length) {
-        const quality = await this.qualityReport(
-          request.task,
-          request.plan,
-          policyVersion,
-          inspection.view.sourceHash,
-          diagnostics,
-          `quality/report/${round + 1}`,
-        );
-        return { kind: "accepted", brief, article, quality };
-      }
-
-      if (blockers.every(isEvaluatorUnavailable) && round < maxRounds) {
-        continue;
-      }
-
-      const stateHash = await fingerprint({
-        article,
-        blockers,
-        evidence: brief.evidence,
-        materials: brief.materials.map((material) => ({
-          id: material.id,
-          contentHash: material.contentHash,
-        })),
-      });
-      const cannotRevise = !request.plan.reviser || round >= maxRounds || seen.has(stateHash);
-      if (cannotRevise) {
-        const quality = await this.qualityReport(
-          request.task,
-          request.plan,
-          policyVersion,
-          inspection.view.sourceHash,
-          diagnostics,
-          `quality/report/${round + 1}`,
-        );
-        return { kind: "rejected", brief, article, quality };
-      }
-      seen.add(stateHash);
-      const previousBrief = structuredClone(brief);
-      const previous = structuredClone(article);
-      const blockerCodes = new Set(blockers.map((diagnostic) => diagnostic.code));
-      const evidenceNeeds = evaluation.evidenceNeeds.filter((need) =>
-        blockerCodes.has(need.diagnosticCode),
-      );
-      let addedEvidenceIds: string[] = [];
-      if (evidenceNeeds.length && request.plan.evidenceSupplementer) {
-        const supplementer = request.plan.evidenceSupplementer;
-        const supplemented = await request.task.run<EvidenceSupplementStep>(
-          {
-            id: `quality/supplement/${round + 1}-${supplementer.id}`,
-            version: supplementer.version,
-            input: {
-              plan: planFingerprint(request.plan),
-              supplementerId: supplementer.id,
-              article: previous,
-              brief,
-              evidenceNeeds,
-            },
-            optional: true,
-            fallback: (error): EvidenceSupplementStep => ({
-              brief,
-              addedEvidenceIds: [],
-              warning: {
-                sourceHash: inspection.view.sourceHash,
-                code: `evidence-supplementer.${supplementer.id}.unavailable`,
-                severity: "warning",
-                scope: "evidence",
-                message: describeUnknown(error),
-              },
-            }),
-          },
-          async (signal) => {
-            const supplement = await supplementer.supplement(
-              {
-                article: previous,
-                view: structuredClone(inspection.view),
-                brief: structuredClone(brief),
-                identity: structuredClone(request.input.identity),
-                needs: structuredClone(evidenceNeeds),
-              },
-              this.context(
-                request.task.scope(`quality/supplement/${round + 1}-${supplementer.id}/internal`),
-                signal,
-              ),
-            );
-            return mergeEvidenceSupplement(brief, supplement);
-          },
-        );
-        brief = supplemented.brief;
-        addedEvidenceIds = supplemented.addedEvidenceIds;
-        if (supplemented.warning) qualityWarnings.push(supplemented.warning);
-      }
-      const reviser = request.plan.reviser!;
-      article = await request.task.run(
-        {
-          id: `quality/revise/${round + 1}`,
-          version: reviser.version,
-          input: {
-            plan: planFingerprint(request.plan),
-            reviserId: reviser.id,
-            article: previous,
-            diagnostics: blockers,
-            brief,
-            addedEvidenceIds,
-          },
-        },
-        async (signal) => {
-          const revised = await reviser.revise(
-            {
-              article: previous,
-              view: structuredClone(inspection.view),
-              brief: structuredClone(brief),
-              identity: structuredClone(request.input.identity),
-              diagnostics: structuredClone(blockers),
-              addedEvidenceIds: structuredClone(addedEvidenceIds),
-            },
-            this.context(request.task.scope(`quality/revise/${round + 1}/internal`), signal),
-          );
-          assertWorkingArticle(revised);
-          return structuredClone(revised);
-        },
-      );
-      if (
-        (await fingerprint({ article: previous, brief: previousBrief })) ===
-        (await fingerprint({ article, brief }))
-      ) {
-        const quality = await this.qualityReport(
-          request.task,
-          request.plan,
-          policyVersion,
-          inspection.view.sourceHash,
-          diagnostics,
-          `quality/report/${round + 1}`,
-        );
-        return { kind: "rejected", brief, article, quality };
-      }
-    }
-  }
-
-  private async evaluate(
-    request: RunArticlePipelineRequest,
-    brief: EditorialBrief,
-    article: WorkingArticle,
-    inspection: ArticleInspection,
-    round: number,
-  ): Promise<ArticleEvaluation> {
-    const diagnostics: ContentDiagnostic[] = [];
-    const evidenceNeeds: EvidenceNeed[] = [];
-    for (const [index, evaluator] of (request.plan.evaluators ?? []).entries()) {
-      const value = await request.task.run<ArticleEvaluation>(
-        {
-          id: `quality/evaluate/${round + 1}/${index + 1}-${evaluator.id}`,
-          version: evaluator.version,
-          input: {
-            plan: planFingerprint(request.plan),
-            evaluatorId: evaluator.id,
-            article,
-            brief,
-          },
-          optional: true,
-          fallback: (error) => ({
-            diagnostics: [
-              {
-                sourceHash: inspection.view.sourceHash,
-                code: `evaluator.${evaluator.id}.unavailable`,
-                severity: "blocker",
-                scope: "article",
-                message: describeUnknown(error),
-              },
-            ],
-            evidenceNeeds: [],
-          }),
-        },
-        async (signal) => {
-          const result = await evaluator.evaluate(
-            {
-              article: structuredClone(article),
-              view: structuredClone(inspection.view),
-              brief: structuredClone(brief),
-              identity: structuredClone(request.input.identity),
-            },
-            this.context(
-              request.task.scope(
-                `quality/evaluate/${round + 1}/${index + 1}-${evaluator.id}/internal`,
-              ),
-              signal,
-            ),
-          );
-          assertArticleEvaluation(result, evaluator.id);
-          return result;
-        },
-      );
-      diagnostics.push(
-        ...value.diagnostics.map((diagnostic) => ({
-          ...structuredClone(diagnostic),
-          sourceHash: inspection.view.sourceHash,
-        })),
-      );
-      evidenceNeeds.push(...structuredClone(value.evidenceNeeds));
-    }
-    if (new Set(evidenceNeeds.map((need) => need.id)).size !== evidenceNeeds.length) {
-      throw new Error("Evaluator 返回了重复的 EvidenceNeed ID");
-    }
-    return { diagnostics, evidenceNeeds };
-  }
-
-  private async qualityReport(
-    task: TaskContext,
-    plan: ArticleExecutionPlan,
-    policyVersion: string,
-    sourceHash: string,
-    diagnostics: ContentDiagnostic[],
-    taskId: string,
-  ): Promise<QualityReport> {
-    return await task.run(
-      {
-        id: taskId,
-        version: "1",
-        input: { plan: planFingerprint(plan), policyVersion, sourceHash, diagnostics },
-      },
-      async () => ({
-        id: `quality_${this.idFactory()}`,
-        sourceHash,
-        policyVersion,
-        diagnostics: structuredClone(diagnostics),
-        evaluatedAt: this.now().toISOString(),
-      }),
-    );
-  }
-
   private async build(
     request: RunArticlePipelineRequest,
     brief: EditorialBrief,
     article: WorkingArticle,
-    quality: QualityReport,
-  ): Promise<
-    | { kind: typeof ArticleResultKind.ReviewRequest; reviewRequest: ReviewRequest }
-    | { kind: typeof ArticleResultKind.ContentPackage; contentPackage: ContentPackage }
-  > {
+    operationalWarnings: ContentDiagnostic[],
+    master?: MasterContent,
+  ): Promise<{ kind: typeof ArticleResultKind.ContentPackage; contentPackage: ContentPackage }> {
     const inspection = await this.compiler.inspect({
       article,
       evidence: brief.evidence,
@@ -555,32 +268,24 @@ export class ArticlePipeline {
         }),
     );
     const finalDiagnostics = normalizeDiagnostics([
-      ...quality.diagnostics,
+      ...operationalWarnings.map((warning) => ({
+        ...warning,
+        sourceHash: compilation.sourceHash,
+      })),
       ...resolutionResult.diagnostics,
       ...compilation.diagnostics,
     ]);
-    const finalQuality: QualityReport = {
-      ...quality,
-      diagnostics: finalDiagnostics,
-    };
-    if (finalDiagnostics.some(isBlockingDiagnostic)) {
-      const rejectedQuality = await this.qualityReport(
-        request.task,
-        request.plan,
-        quality.policyVersion,
-        inspection.view.sourceHash,
-        finalDiagnostics,
-        "build/report",
-      );
-      const reviewRequest = await this.createReviewRequest(
-        request,
-        brief,
-        article,
-        rejectedQuality,
-        "build/review-request",
-      );
-      return { kind: ArticleResultKind.ReviewRequest, reviewRequest };
+    const blockers = finalDiagnostics.filter(isBlockingDiagnostic);
+    if (blockers.length) {
+      throw new Error(blockers.map((diagnostic) => diagnostic.message).join("；"));
     }
+    const finalQuality: QualityReport = {
+      id: `quality_${compilation.sourceHash}`,
+      sourceHash: compilation.sourceHash,
+      policyVersion: `content-plan:${request.plan.id}@${request.plan.revision}`,
+      diagnostics: finalDiagnostics,
+      evaluatedAt: request.input.requestedAt,
+    };
     const origin: ContentPackageOrigin = {
       jobId: request.task.jobId,
       planId: request.plan.id,
@@ -600,6 +305,7 @@ export class ArticlePipeline {
           identity: request.input.identity,
           quality: finalQuality,
           origin,
+          master,
         },
       },
       () =>
@@ -613,6 +319,7 @@ export class ArticlePipeline {
           compilerVersion: this.compiler.version,
           origin,
           createdAt: this.now().toISOString(),
+          master,
         }),
     );
     return { kind: ArticleResultKind.ContentPackage, contentPackage };
@@ -692,45 +399,10 @@ export class ArticlePipeline {
     return { resolutions, assets, diagnostics };
   }
 
-  private async createReviewRequest(
-    request: RunArticlePipelineRequest,
-    brief: EditorialBrief,
-    article: WorkingArticle,
-    quality: QualityReport,
-    taskId: string,
-  ): Promise<ReviewRequest> {
-    return await request.task.run(
-      {
-        id: taskId,
-        version: "2",
-        input: {
-          plan: planFingerprint(request.plan),
-          article,
-          brief,
-          quality,
-          identity: request.input.identity,
-        },
-      },
-      async () => ({
-        schemaVersion: ArticleSchemaVersion.ReviewRequest,
-        id: `review_${this.idFactory()}`,
-        article: structuredClone(article),
-        brief: structuredClone(brief),
-        identity: structuredClone(request.input.identity),
-        quality: structuredClone(quality),
-        createdAt: this.now().toISOString(),
-      }),
-    );
-  }
-
   private context(task: TaskContext, signal: AbortSignal): ArticleOperationContext {
     return { task, signal, now: this.now };
   }
 }
-
-type QualityLoopResult =
-  | { kind: "accepted"; brief: EditorialBrief; article: WorkingArticle; quality: QualityReport }
-  | { kind: "rejected"; brief: EditorialBrief; article: WorkingArticle; quality: QualityReport };
 
 interface TransformerStep {
   article: WorkingArticle;
@@ -742,132 +414,15 @@ interface AssetStep {
   diagnostic?: ContentDiagnostic;
 }
 
-interface EvidenceSupplementStep {
-  brief: EditorialBrief;
-  addedEvidenceIds: string[];
-  warning?: ContentDiagnostic;
-}
-
-function assertArticleEvaluation(
-  value: ArticleEvaluation,
-  evaluatorId: string,
-): asserts value is ArticleEvaluation {
-  if (!value || typeof value !== "object") {
-    throw new Error(`Evaluator ${evaluatorId} 返回格式无效`);
-  }
-  if (!Array.isArray(value.diagnostics) || !Array.isArray(value.evidenceNeeds)) {
-    throw new Error(`Evaluator ${evaluatorId} 必须返回 diagnostics 和 evidenceNeeds`);
-  }
-  for (const need of value.evidenceNeeds) {
-    if (
-      !need ||
-      typeof need.id !== "string" ||
-      !need.id.trim() ||
-      typeof need.diagnosticCode !== "string" ||
-      !need.diagnosticCode.trim() ||
-      typeof need.question !== "string" ||
-      !need.question.trim()
-    ) {
-      throw new Error(`Evaluator ${evaluatorId} 返回了无效 EvidenceNeed`);
-    }
-  }
-}
-
-function mergeEvidenceSupplement(
-  brief: EditorialBrief,
-  supplement: { materials: MaterialSnapshot[]; evidence: EvidenceUnit[] },
-): EvidenceSupplementStep {
-  if (!supplement || !Array.isArray(supplement.materials) || !Array.isArray(supplement.evidence)) {
-    throw new Error("EvidenceSupplementer 必须返回 materials 和 evidence");
-  }
-  if (!supplement.evidence.length) {
-    return { brief: structuredClone(brief), addedEvidenceIds: [] };
-  }
-
-  const existingMaterialIds = new Set(brief.materials.map((material) => material.id));
-  const existingMaterialHashes = new Set(brief.materials.map((material) => material.contentHash));
-  const suppliedMaterialIds = new Set<string>();
-  const suppliedMaterialHashes = new Set<string>();
-  for (const material of supplement.materials) {
-    if (
-      !material ||
-      typeof material.id !== "string" ||
-      !material.id.trim() ||
-      typeof material.title !== "string" ||
-      !material.title.trim() ||
-      typeof material.contentHash !== "string" ||
-      !material.contentHash.trim() ||
-      typeof material.retrievedAt !== "string" ||
-      !material.retrievedAt.trim()
-    ) {
-      throw new Error("EvidenceSupplementer 返回了无效 MaterialSnapshot");
-    }
-    if (existingMaterialIds.has(material.id) || suppliedMaterialIds.has(material.id)) {
-      throw new Error(`EvidenceSupplementer 返回了重复素材 ID：${material.id}`);
-    }
-    if (
-      existingMaterialHashes.has(material.contentHash) ||
-      suppliedMaterialHashes.has(material.contentHash)
-    ) {
-      throw new Error(`EvidenceSupplementer 返回了重复素材内容：${material.id}`);
-    }
-    suppliedMaterialIds.add(material.id);
-    suppliedMaterialHashes.add(material.contentHash);
-  }
-
-  const allMaterials = [...brief.materials, ...supplement.materials];
-  const materialById = new Map(allMaterials.map((material) => [material.id, material]));
-  const evidenceIds = new Set(brief.evidence.map((evidence) => evidence.id));
-  const referencedMaterialIds = new Set<string>();
-  for (const evidence of supplement.evidence) {
-    if (
-      !evidence ||
-      typeof evidence.id !== "string" ||
-      !evidence.id.trim() ||
-      typeof evidence.statement !== "string" ||
-      !evidence.statement.trim() ||
-      typeof evidence.materialId !== "string" ||
-      !evidence.materialId.trim()
-    ) {
-      throw new Error("EvidenceSupplementer 返回了无效 EvidenceUnit");
-    }
-    if (evidenceIds.has(evidence.id)) {
-      throw new Error(`EvidenceSupplementer 返回了重复证据 ID：${evidence.id}`);
-    }
-    evidenceIds.add(evidence.id);
-    const material = materialById.get(evidence.materialId);
-    if (!material) {
-      throw new Error(`EvidenceSupplementer 的证据引用了不存在的素材：${evidence.materialId}`);
-    }
-    const issues = evidenceLocatorIssues(evidence, material);
-    if (issues.length) throw new Error(issues.map((issue) => issue.message).join("；"));
-    referencedMaterialIds.add(evidence.materialId);
-  }
-
-  const addedMaterials = supplement.materials.filter((material) =>
-    referencedMaterialIds.has(material.id),
-  );
-  return {
-    brief: {
-      ...structuredClone(brief),
-      materials: [...structuredClone(brief.materials), ...structuredClone(addedMaterials)],
-      evidence: [...structuredClone(brief.evidence), ...structuredClone(supplement.evidence)],
-    },
-    addedEvidenceIds: supplement.evidence.map((evidence) => evidence.id),
-  };
-}
-
 function validateExecutionPlan(plan: ArticleExecutionPlan): void {
   if (!plan.id.trim()) throw new Error("ArticleExecutionPlan 缺少 ID");
   if (!Number.isInteger(plan.revision) || plan.revision < 1) {
     throw new Error("ArticleExecutionPlan revision 必须为正整数");
   }
-  const ids = [
-    ...(plan.transformers ?? []).map((extension) => `transformer:${extension.id}`),
-    ...(plan.evaluators ?? []).map((extension) => `evaluator:${extension.id}`),
-    ...(plan.evidenceSupplementer ? [`evidence-supplementer:${plan.evidenceSupplementer.id}`] : []),
-    ...(plan.reviser ? [`reviser:${plan.reviser.id}`] : []),
-  ];
+  if (!plan.agent && (!plan.researcher || !plan.writer)) {
+    throw new Error("ArticleExecutionPlan 必须提供 ReAct Agent");
+  }
+  const ids = (plan.transformers ?? []).map((extension) => `transformer:${extension.id}`);
   if (new Set(ids).size !== ids.length) throw new Error("ArticleExecutionPlan 包含重复插件 ID");
   const requiredAssetTypes = plan.requiredAssetTypes ?? [];
   if (new Set(requiredAssetTypes).size !== requiredAssetTypes.length) {
@@ -879,8 +434,32 @@ function planFingerprint(plan: ArticleExecutionPlan): { planId: string; planRevi
   return { planId: plan.id, planRevision: plan.revision };
 }
 
-function isEvaluatorUnavailable(diagnostic: ContentDiagnostic): boolean {
-  return diagnostic.code.startsWith("evaluator.") && diagnostic.code.endsWith(".unavailable");
+function fallbackEditorialBrief(input: ArticleInput, reason: string): EditorialBrief {
+  const topic =
+    input.requestedTopic?.trim() ||
+    metadataText(input.metadata?.instructions) ||
+    metadataText(input.metadata?.keywords) ||
+    input.identity.positioning.trim() ||
+    input.identity.name;
+  return {
+    topic,
+    angle: `从${input.identity.audience || "目标读者"}的实际需求出发解释${topic}`,
+    rationale: "研究材料不足时使用预设模板继续生产，避免一次运行没有成品。",
+    thesis: `围绕${topic}给出清晰判断、适用边界和可执行建议。`,
+    outline: ["问题与背景", "关键判断", "适用边界", "行动建议"],
+    materials: structuredClone(input.materials ?? []),
+    evidence: [],
+    gaps: [reason, "缺少外部证据时不得虚构具体事实、数据或来源"],
+  };
+}
+
+function metadataText(value: unknown): string | undefined {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (Array.isArray(value)) {
+    const first = value.find((item): item is string => typeof item === "string" && !!item.trim());
+    return first?.trim();
+  }
+  return undefined;
 }
 
 function assertWorkingArticle(article: WorkingArticle): void {

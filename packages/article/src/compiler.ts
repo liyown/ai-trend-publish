@@ -20,7 +20,11 @@ import type {
   MaterialSnapshot,
   WorkingArticle,
 } from "./domain.ts";
-import { EvidenceDiagnosticCode, evidenceLocatorIssues } from "./evidence.ts";
+import {
+  EvidenceDiagnosticCode,
+  evidenceLocatorIssues,
+  selectPublishableEvidence,
+} from "./evidence.ts";
 
 type MarkedToken = {
   type: string;
@@ -77,7 +81,9 @@ export class ArticleCompiler {
     };
 
     try {
-      const tokens = marked.lexer(input.article.source.bodyMarkdown) as MarkedToken[];
+      const tokens = marked.lexer(
+        normalizeMarkdownTypography(input.article.source.bodyMarkdown),
+      ) as MarkedToken[];
       if (containsRawHtml(tokens)) {
         diagnostics.push({
           sourceHash,
@@ -113,15 +119,17 @@ export class ArticleCompiler {
         location: { nodeId: unsupported.nodeId },
       });
     }
-    const evidenceIds = new Set(input.evidence.map((item) => item.id));
+    const evidenceIds = new Set(
+      selectPublishableEvidence(input.materials, input.evidence).evidence.map((item) => item.id),
+    );
     const requestIds = new Set(input.article.assetRequests.map((item) => item.id));
     if (!references.evidence.some((reference) => evidenceIds.has(reference.value))) {
       diagnostics.push({
         sourceHash,
         code: EvidenceDiagnosticCode.CitationMissing,
-        severity: "blocker",
+        severity: "warning",
         scope: "evidence",
-        message: "正文至少需要引用一条有效证据",
+        message: "正文没有引用有效证据，将按无外部事实文章发布",
       });
     }
     for (const reference of references.evidence) {
@@ -129,7 +137,7 @@ export class ArticleCompiler {
         diagnostics.push({
           sourceHash,
           code: DiagnosticCode.EvidenceReferenceMissing,
-          severity: "blocker",
+          severity: "warning",
           scope: "evidence",
           message: `正文引用了不存在的证据 ${reference.value}`,
           location: { nodeId: reference.nodeId, evidenceId: reference.value },
@@ -175,6 +183,9 @@ export class ArticleCompiler {
       inspection.view.root,
       requestById,
       resolutionById,
+      new Set(
+        selectPublishableEvidence(input.materials, input.evidence).evidence.map((item) => item.id),
+      ),
       diagnostics,
       inspection.view.sourceHash,
     );
@@ -252,9 +263,9 @@ function baselineDiagnostics(
     diagnostics.push({
       sourceHash,
       code: DiagnosticCode.EvidenceMissing,
-      severity: "blocker",
+      severity: "warning",
       scope: "evidence",
-      message: "文章没有可追溯证据",
+      message: "文章没有可追溯证据，不得包含具体外部事实断言",
     });
   }
 
@@ -431,7 +442,7 @@ function inlineNodes(
     switch (token.type) {
       case "text":
       case "escape":
-        return [{ id, type: "text", text: token.text ?? token.raw ?? "" }];
+        return [{ id, type: "text", text: decodeHtmlText(token.text ?? token.raw ?? "") }];
       case "strong":
         return [
           {
@@ -502,8 +513,8 @@ function inlineNodes(
               id,
               type: "asset-request",
               requestId: referenceId(href, "asset-request://"),
-              alt: token.text ?? "",
-              ...(token.title ? { title: token.title } : {}),
+              alt: decodeHtmlText(token.text ?? ""),
+              ...(token.title ? { title: decodeHtmlText(token.title) } : {}),
             },
           ];
         }
@@ -512,8 +523,8 @@ function inlineNodes(
             id,
             type: "remote-image",
             sourceUrl: href,
-            alt: token.text ?? "",
-            ...(token.title ? { title: token.title } : {}),
+            alt: decodeHtmlText(token.text ?? ""),
+            ...(token.title ? { title: decodeHtmlText(token.title) } : {}),
           },
         ];
       }
@@ -523,10 +534,42 @@ function inlineNodes(
   });
 }
 
+/**
+ * Marked 4 misparses adjacent strong spans wrapped in ASCII quotes, especially in CJK prose.
+ * Curly quotes preserve the author-visible content while producing stable inline tokens.
+ */
+function normalizeMarkdownTypography(value: string): string {
+  return value
+    .replace(/\*\*(?:&quot;|")([^\n]*?)(?:&quot;|")\*\*/g, "**“$1”**")
+    .replace(/\*\*'([^\n]*?)'\*\*/g, "**‘$1’**");
+}
+
+function decodeHtmlText(value: string): string {
+  return value.replace(/&(?:#x[\da-f]+|#\d+|amp|apos|quot|lt|gt|nbsp);/gi, (entity) => {
+    const named: Record<string, string> = {
+      "&amp;": "&",
+      "&apos;": "'",
+      "&quot;": '"',
+      "&lt;": "<",
+      "&gt;": ">",
+      "&nbsp;": " ",
+    };
+    const normalized = entity.toLowerCase();
+    if (normalized in named) return named[normalized]!;
+    const hexadecimal = normalized.match(/^&#x([\da-f]+);$/i)?.[1];
+    const decimal = normalized.match(/^&#(\d+);$/)?.[1];
+    const codePoint = Number.parseInt(hexadecimal ?? decimal ?? "", hexadecimal ? 16 : 10);
+    return Number.isSafeInteger(codePoint) && codePoint >= 0 && codePoint <= 0x10ffff
+      ? String.fromCodePoint(codePoint)
+      : entity;
+  });
+}
+
 function resolveRoot(
   root: ArticleRootNode<ArticleAssetRequestNode>,
   requests: Map<string, AssetRequest>,
   resolutions: Map<string, ContentAsset>,
+  evidenceIds: ReadonlySet<string>,
   diagnostics: ContentDiagnostic[],
   sourceHash: string,
 ): ArticleRootNode<ArticleAssetNode> {
@@ -534,7 +577,9 @@ function resolveRoot(
     id: root.id,
     type: "root",
     children: root.children
-      .map((node) => resolveBlock(node, requests, resolutions, diagnostics, sourceHash))
+      .map((node) =>
+        resolveBlock(node, requests, resolutions, evidenceIds, diagnostics, sourceHash),
+      )
       .filter((node): node is ArticleBlockNode<ArticleAssetNode> => Boolean(node)),
   };
 }
@@ -543,6 +588,7 @@ function resolveBlock(
   node: ArticleBlockNode<ArticleAssetRequestNode>,
   requests: Map<string, AssetRequest>,
   resolutions: Map<string, ContentAsset>,
+  evidenceIds: ReadonlySet<string>,
   diagnostics: ContentDiagnostic[],
   sourceHash: string,
 ): ArticleBlockNode<ArticleAssetNode> | null {
@@ -553,6 +599,7 @@ function resolveBlock(
         node.children,
         requests,
         resolutions,
+        evidenceIds,
         diagnostics,
         sourceHash,
       );
@@ -563,7 +610,9 @@ function resolveBlock(
       return {
         ...node,
         children: node.children
-          .map((child) => resolveBlock(child, requests, resolutions, diagnostics, sourceHash))
+          .map((child) =>
+            resolveBlock(child, requests, resolutions, evidenceIds, diagnostics, sourceHash),
+          )
           .filter((child): child is ArticleBlockNode<ArticleAssetNode> => Boolean(child)),
       };
     case "list":
@@ -572,7 +621,9 @@ function resolveBlock(
         items: node.items.map((item) => ({
           ...item,
           children: item.children
-            .map((child) => resolveBlock(child, requests, resolutions, diagnostics, sourceHash))
+            .map((child) =>
+              resolveBlock(child, requests, resolutions, evidenceIds, diagnostics, sourceHash),
+            )
             .filter((child): child is ArticleBlockNode<ArticleAssetNode> => Boolean(child)),
         })),
       };
@@ -580,10 +631,12 @@ function resolveBlock(
       return {
         ...node,
         header: node.header.map((cell) =>
-          resolveInlines(cell, requests, resolutions, diagnostics, sourceHash),
+          resolveInlines(cell, requests, resolutions, evidenceIds, diagnostics, sourceHash),
         ),
         rows: node.rows.map((row) =>
-          row.map((cell) => resolveInlines(cell, requests, resolutions, diagnostics, sourceHash)),
+          row.map((cell) =>
+            resolveInlines(cell, requests, resolutions, evidenceIds, diagnostics, sourceHash),
+          ),
         ),
       };
     case "html":
@@ -597,10 +650,14 @@ function resolveInlines(
   nodes: ArticleInlineNode<ArticleAssetRequestNode>[],
   requests: Map<string, AssetRequest>,
   resolutions: Map<string, ContentAsset>,
+  evidenceIds: ReadonlySet<string>,
   diagnostics: ContentDiagnostic[],
   sourceHash: string,
 ): ArticleInlineNode<ArticleAssetNode>[] {
   return nodes.flatMap((node): ArticleInlineNode<ArticleAssetNode>[] => {
+    if (node.type === "citation" && !evidenceIds.has(node.evidenceId)) {
+      return [{ id: node.id, type: "text", text: node.label || "来源" }];
+    }
     if (node.type === "asset-request") {
       const request = requests.get(node.requestId);
       const asset = resolutions.get(node.requestId);
@@ -635,7 +692,14 @@ function resolveInlines(
       return [
         {
           ...node,
-          children: resolveInlines(node.children, requests, resolutions, diagnostics, sourceHash),
+          children: resolveInlines(
+            node.children,
+            requests,
+            resolutions,
+            evidenceIds,
+            diagnostics,
+            sourceHash,
+          ),
         },
       ];
     }
@@ -643,7 +707,14 @@ function resolveInlines(
       return [
         {
           ...node,
-          children: resolveInlines(node.children, requests, resolutions, diagnostics, sourceHash),
+          children: resolveInlines(
+            node.children,
+            requests,
+            resolutions,
+            evidenceIds,
+            diagnostics,
+            sourceHash,
+          ),
         },
       ];
     }

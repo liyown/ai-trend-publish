@@ -74,6 +74,36 @@ test("annotated Markdown compiles into citation and resolved asset nodes", async
   equal(nodeTypes(compilation.document).includes("asset-request"), false);
 });
 
+test("quoted strong spans remain semantic text instead of escaped Markdown artifacts", async () => {
+  const compilation = await new ArticleCompiler().compile({
+    article: {
+      source: {
+        format: ArticleSourceFormat.Markdown,
+        title: "标题",
+        digest: "摘要",
+        bodyMarkdown: '共同主题是**"更便宜"**以及**"更可靠"**。',
+      },
+      assetRequests: [],
+    },
+    evidence: [],
+    materials: [],
+  });
+  const paragraph = compilation.document.root.children[0] as Extract<
+    ArticleBlockNode<any>,
+    { type: "paragraph" }
+  >;
+
+  expect(paragraph.children).toMatchObject([
+    { type: "text", text: "共同主题是" },
+    { type: "strong", children: [{ type: "text", text: "“更便宜”" }] },
+    { type: "text", text: "以及" },
+    { type: "strong", children: [{ type: "text", text: "“更可靠”" }] },
+    { type: "text", text: "。" },
+  ]);
+  expect(JSON.stringify(compilation.document)).not.toContain("&quot;");
+  expect(JSON.stringify(compilation.document)).not.toContain("**");
+});
+
 test("raw HTML and remote Markdown images are rejected and removed from final IR", async () => {
   const compiler = new ArticleCompiler();
   const article = {
@@ -97,7 +127,7 @@ test("raw HTML and remote Markdown images are rejected and removed from final IR
   equal(nodeTypes(compilation.document).includes("remote-image"), false);
 });
 
-test("an article without a valid evidence citation is blocked", async () => {
+test("an article without a valid evidence citation remains publishable with a warning", async () => {
   const inspection = await new ArticleCompiler().inspect({
     article: {
       source: {
@@ -115,9 +145,33 @@ test("an article without a valid evidence citation is blocked", async () => {
   expect(inspection.diagnostics).toContainEqual(
     expect.objectContaining({
       code: "evidence.citation_missing",
-      severity: "blocker",
+      severity: "warning",
     }),
   );
+});
+
+test("invalid evidence references are downgraded to plain text in the compiled document", async () => {
+  const compilation = await new ArticleCompiler().compile({
+    article: {
+      source: {
+        format: ArticleSourceFormat.Markdown,
+        title: "标题",
+        digest: "摘要",
+        bodyMarkdown: "正文。[待核来源](evidence://missing)",
+      },
+      assetRequests: [],
+    },
+    evidence: [],
+    materials: [],
+  });
+
+  expect(compilation.diagnostics).toContainEqual(
+    expect.objectContaining({
+      code: "evidence.reference_missing",
+      severity: "warning",
+    }),
+  );
+  expect(nodeTypes(compilation.document).includes("citation")).toBe(false);
 });
 
 test("evidence locators must be valid and match their material snapshot", async () => {

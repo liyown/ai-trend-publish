@@ -17,11 +17,12 @@ import type {
   EditorialBrief,
   EvidenceUnit,
   MaterialSnapshot,
+  MasterContent,
   QualityReport,
   WorkingArticle,
 } from "./domain.ts";
-import { isBlockingDiagnostic, materialReference } from "./domain.ts";
-import { evidenceLocatorIssues } from "./evidence.ts";
+import { materialReference } from "./domain.ts";
+import { evidenceLocatorIssues, selectPublishableEvidence } from "./evidence.ts";
 
 export interface ContentPackageOrigin {
   jobId: string;
@@ -40,6 +41,7 @@ export interface BuildContentPackageInput {
   compilerVersion: string;
   origin: ContentPackageOrigin;
   createdAt: string;
+  master?: MasterContent;
 }
 
 export class ContentPackageBuildError extends Error {
@@ -54,17 +56,27 @@ export class ContentPackageBuilder {
   constructor(private readonly idFactory: () => string = () => crypto.randomUUID()) {}
 
   async build(input: BuildContentPackageInput): Promise<ContentPackage> {
-    const reasons = await validatePackageInput(input);
+    const publishable = selectPublishableEvidence(input.brief.materials, input.brief.evidence);
+    const normalizedInput: BuildContentPackageInput = {
+      ...input,
+      brief: {
+        ...input.brief,
+        materials: publishable.materials,
+        evidence: publishable.evidence,
+      },
+    };
+    const reasons = await validatePackageInput(normalizedInput);
     if (reasons.length) throw new ContentPackageBuildError(reasons);
 
     const id = `content_${this.idFactory()}`;
     const payload = persistedJson({
       schemaVersion: ArticleSchemaVersion.ContentPackage,
       id,
+      ...(normalizedInput.master ? { master: structuredClone(normalizedInput.master) } : {}),
       source: input.article.source,
       document: input.compilation.document,
-      evidence: input.brief.evidence,
-      materials: input.brief.materials.map(materialReference),
+      evidence: normalizedInput.brief.evidence,
+      materials: normalizedInput.brief.materials.map(materialReference),
       assets: input.assets,
       identity: input.identity,
       build: {
@@ -105,10 +117,6 @@ async function validatePackageInput(input: BuildContentPackageInput): Promise<st
   if ((await fingerprint(input.article.source)) !== input.compilation.sourceHash) {
     reasons.push("文章来源与编译结果不一致");
   }
-  const blocking = [...input.quality.diagnostics, ...input.compilation.diagnostics].filter(
-    isBlockingDiagnostic,
-  );
-  if (blocking.length) reasons.push(`存在 ${blocking.length} 个阻断问题`);
   if (input.compilation.document.title !== input.article.source.title.trim()) {
     reasons.push("Document 标题与 Source 不一致");
   }
@@ -157,12 +165,9 @@ function validateDocument(
   if (document.coverAssetId && !assetIds.has(document.coverAssetId)) {
     reasons.push(`封面引用了不存在的资源 ${document.coverAssetId}`);
   }
-  let validCitationCount = 0;
   const visitInline = (node: ArticleInlineNode<ArticleAssetNode>): void => {
     if (node.type === "citation" && !evidenceIds.has(node.evidenceId)) {
       reasons.push(`Document 引用了不存在的证据 ${node.evidenceId}`);
-    } else if (node.type === "citation") {
-      validCitationCount += 1;
     } else if (node.type === "asset" && !assetIds.has(node.assetId)) {
       reasons.push(`Document 引用了不存在的资源 ${node.assetId}`);
     } else if (node.type === "remote-image") {
@@ -189,7 +194,6 @@ function validateDocument(
     }
   };
   document.root.children.forEach(visitBlock);
-  if (validCitationCount === 0) reasons.push("Document 至少需要引用一条有效证据");
 }
 
 function packageEvidenceLocatorReasons(

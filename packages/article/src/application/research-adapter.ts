@@ -1,11 +1,11 @@
 import type {
   ArticleOperationContext,
-  MaterialSnapshot,
   ResearchCandidate,
   ResearchFetchTool,
   ResearchSearchTool,
   ResearchTool,
 } from "../extensions.ts";
+import type { MaterialSnapshot } from "../domain.ts";
 import {
   SourceFetchCapability,
   SourceSearchCapability,

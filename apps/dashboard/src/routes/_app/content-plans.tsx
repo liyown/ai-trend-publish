@@ -1,23 +1,28 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  listContentPlans,
   createContentPlan,
-  updateContentPlan,
   deleteContentPlan,
+  listContentPlans,
+  updateContentPlan,
 } from "#platform/api/content-plans.ts";
-import type { SaveContentPlanPayload } from "#platform/api/types.ts";
-import { useNavigate } from "@tanstack/react-router";
-import { Plus } from "lucide-react";
+import type { ContentPlan, SaveContentPlanPayload } from "#platform/api/types.ts";
+import { Copy, Eye, Plus } from "lucide-react";
 import { useWorkspaceSnapshot } from "#platform/api/use-workspace-snapshot.ts";
 import { Button } from "#components/ui/button.tsx";
 import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
 import { PageGrid } from "#components/product/page-grid.tsx";
+import { Pagination } from "#components/ui/pagination.tsx";
+
+const PAGE_SIZE = 20;
 
 export const contentPlansKey = () => ["content-plans"] as const;
 
-export function useContentPlans() {
-  return useQuery({ queryKey: contentPlansKey(), queryFn: listContentPlans });
+export function useContentPlans(page = 1) {
+  return useQuery({
+    queryKey: [...contentPlansKey(), page] as const,
+    queryFn: () => listContentPlans(page, PAGE_SIZE),
+  });
 }
 
 export function useDeleteContentPlan() {
@@ -37,14 +42,40 @@ export function useSaveContentPlan(planId?: string) {
   });
 }
 
-export const Route = createFileRoute("/_app/content-plans")({ component: ContentPlansPage });
+function useDuplicateContentPlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (plan: ContentPlan) =>
+      createContentPlan({
+        name: `${plan.name} (副本)`,
+        enabled: false,
+        identityId: plan.identityId,
+        knowledgeBaseIds: plan.knowledgeBaseIds ?? [],
+        sourceCollectionIds: plan.sourceCollectionIds,
+        plugins: structuredClone(plan.plugins),
+        connections: { ...plan.connections },
+        researchConnections: plan.researchConnections ?? { search: [], fetch: [] },
+        publishing: { ...plan.publishing },
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: contentPlansKey() }),
+  });
+}
+
+export const Route = createFileRoute("/_app/content-plans")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    page: Number(search["page"] ?? 1) || 1,
+  }),
+  component: ContentPlansPage,
+});
 
 function ContentPlansPage() {
   const { data: workspace } = useWorkspaceSnapshot({ live: false });
-  const { data } = useContentPlans();
+  const { page } = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const { data } = useContentPlans(page);
   const remove = useDeleteContentPlan();
-  const navigate = useNavigate();
-  const plans = data?.contentPlans ?? [];
+  const duplicate = useDuplicateContentPlan();
+  const plans = data?.items ?? [];
   return (
     <PageGrid>
       <EntityList
@@ -63,6 +94,14 @@ function ContentPlansPage() {
         empty={!plans.length}
         emptyTitle="还没有内容方案"
         emptyDescription="创建方案后，任务只需要选择方案和触发方式。"
+        pagination={
+          <Pagination
+            page={page}
+            pageSize={PAGE_SIZE}
+            total={data?.total ?? 0}
+            onChange={(p) => navigate({ search: (previous) => ({ ...previous, page: p }) })}
+          />
+        }
       >
         {plans.map((plan) => {
           const identity = workspace?.identities.find((item) => item.id === plan.identityId);
@@ -73,11 +112,26 @@ function ContentPlansPage() {
               title={plan.name}
               description={`${identity?.name ?? "身份缺失"} · ${plan.knowledgeBaseIds?.length ?? 0} 个知识库 · ${plan.sourceCollectionIds.length} 个抓取源 · ${plan.plugins.filter((item) => item.enabled).length} 个插件 · ${publishing.mode === "publish" ? `${publishing.targetIds.length} 个发布目标` : "仅生成内容"}`}
               status={plan.enabled ? "ready" : "disabled"}
-              onEdit={() =>
-                navigate({ to: "/content-plans/$planId/edit", params: { planId: plan.id } })
-              }
               onDelete={() => confirm(`删除"${plan.name}"？`) && remove.mutate(plan.id)}
-            />
+            >
+              <Button
+                variant="ghost"
+                onClick={() =>
+                  navigate({ to: "/content-plans/$planId/edit", params: { planId: plan.id } })
+                }
+              >
+                <Eye className="size-3.5" />
+                查看
+              </Button>
+              <Button
+                variant="ghost"
+                loading={duplicate.isPending && duplicate.variables?.id === plan.id}
+                onClick={() => duplicate.mutate(plan)}
+              >
+                <Copy className="size-3.5" />
+                复制
+              </Button>
+            </EntityRow>
           );
         })}
       </EntityList>

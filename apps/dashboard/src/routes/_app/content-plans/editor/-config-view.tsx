@@ -70,7 +70,7 @@ export function ConfigView({
     onSectionChange("plugins");
   };
   return (
-    <div className="grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
+    <div className="grid gap-2 lg:grid-cols-[220px_minmax(0,1fr)]">
       <nav
         aria-label="内容方案配置模块"
         className="min-w-0 overflow-hidden rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)] p-2 lg:sticky lg:top-4 lg:self-start"
@@ -89,7 +89,7 @@ export function ConfigView({
                       setPluginId(form.plugins[0]?.pluginId ?? null);
                   }}
                   className={cn(
-                    "flex w-full items-center gap-3 rounded-[var(--radius-sm)] px-2.5 py-3 text-left transition-colors duration-[var(--motion-base)] ease-[var(--ease-standard)]",
+                    "flex w-full items-center gap-3 rounded-[var(--radius-sm)] px-2.5 py-2 text-left transition-colors duration-[var(--motion-base)] ease-[var(--ease-standard)]",
                     section === id
                       ? "bg-[var(--surface-2)] text-[var(--ink)]"
                       : "text-[var(--muted-strong)] hover:bg-[var(--surface-2)]",
@@ -171,7 +171,7 @@ export function ConfigView({
         </div>
       </nav>
       <div className="min-h-[560px] min-w-0 overflow-hidden rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)]">
-        <div className="mx-auto w-full max-w-3xl px-5 py-7 sm:px-8 lg:py-8">
+        <div className="mx-auto w-full max-w-3xl px-5 py-5 sm:px-7 lg:py-6">
           <SectionHeader
             section={section}
             pluginName={
@@ -213,10 +213,10 @@ function SectionHeader({ section, pluginName }: { section: SectionId; pluginName
   };
   return (
     <header>
-      <h3 className="text-xl font-semibold tracking-[-0.02em]">
+      <h3 className="text-base font-semibold">
         {section === "plugins" && pluginName ? pluginName : item[1]}
       </h3>
-      <p className="mt-1.5 text-sm text-[var(--muted-strong)]">{descriptions[section]}</p>
+      <p className="mt-1 text-sm text-[var(--muted-strong)]">{descriptions[section]}</p>
     </header>
   );
 }

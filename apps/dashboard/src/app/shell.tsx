@@ -57,7 +57,7 @@ export function WorkspaceShell() {
   };
 
   return (
-    <div className="min-h-dvh bg-[var(--paper)] text-[var(--ink)]">
+    <div className="min-h-dvh text-[var(--ink)]">
       <ProductSidebar
         activeItem={activeItem}
         collapsed={collapsed}
@@ -80,7 +80,7 @@ export function WorkspaceShell() {
       <div
         className={cn(
           "flex min-h-dvh flex-col transition-[padding] duration-[var(--motion-base)] ease-[var(--ease-standard)]",
-          collapsed ? "lg:pl-[84px]" : "lg:pl-[276px]",
+          collapsed ? "lg:pl-[80px]" : "lg:pl-[260px]",
         )}
       >
         <WorkspaceTopBar
@@ -90,8 +90,8 @@ export function WorkspaceShell() {
           onRefresh={refreshWorkspace}
           onLogout={logout}
         />
-        <main className="flex-1 min-w-0 w-full px-3 pb-3 sm:px-4 lg:px-5 lg:pb-5">
-          <div className="grid gap-4">
+        <main className="flex-1 min-w-0 w-full px-2 pb-2">
+          <div className="grid gap-2">
             {snapshotError && (
               <WorkspaceStatusBanner
                 error={snapshotError}
@@ -146,7 +146,7 @@ function WorkspaceTopBar({
   onLogout: () => void;
 }) {
   return (
-    <header className="sticky top-3 z-20 mx-3 mt-3 mb-4 rounded-[var(--radius-lg)] border border-[color-mix(in_srgb,var(--border)_82%,transparent)] bg-[color-mix(in_srgb,var(--surface)_88%,transparent)] shadow-[var(--shadow-soft)] backdrop-blur-xl sm:mx-4 lg:mx-5">
+    <header className="sticky top-2 z-20 mx-2 mt-2 mb-2 rounded-[var(--radius-lg)] border border-[color-mix(in_srgb,var(--border)_82%,transparent)] bg-[color-mix(in_srgb,var(--surface)_88%,transparent)] shadow-[var(--shadow-soft)] backdrop-blur-xl">
       <div className="flex min-h-[60px] items-center justify-between gap-4 px-4 sm:px-5">
         <div className="flex min-w-0 items-center gap-3">
           <IconButton
@@ -160,7 +160,7 @@ function WorkspaceTopBar({
           <div className="min-w-0">
             <WorkspaceBreadcrumbs breadcrumbs={header.breadcrumbs} />
             <div className="mt-0.5 flex min-w-0 items-baseline gap-3">
-              <h1 className="truncate text-lg font-semibold text-[var(--ink)]">{header.title}</h1>
+              <h1 className="truncate text-base font-semibold text-[var(--ink)]">{header.title}</h1>
               <p className="hidden truncate text-sm text-[var(--muted-strong)] md:block">
                 {header.detail}
               </p>

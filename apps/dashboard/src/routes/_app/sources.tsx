@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   listSourceCollections,
@@ -16,13 +16,19 @@ import { NativeSelect } from "#components/ui/select.tsx";
 import { AppDialog, AppDialogFooter } from "#components/product/app-dialog.tsx";
 import { FormField } from "#components/product/form-field.tsx";
 import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
+import { Pagination } from "#components/ui/pagination.tsx";
 import { FormError } from "#components/product/form-error.tsx";
 import { PageGrid } from "#components/product/page-grid.tsx";
 
+const PAGE_SIZE = 20;
+
 export const sourceCollectionsKey = () => ["source-collections"] as const;
 
-export function useSourceCollections() {
-  return useQuery({ queryKey: sourceCollectionsKey(), queryFn: listSourceCollections });
+export function useSourceCollections(page = 1) {
+  return useQuery({
+    queryKey: [...sourceCollectionsKey(), page] as const,
+    queryFn: () => listSourceCollections(page, PAGE_SIZE),
+  });
 }
 
 export function useDeleteSourceCollection() {
@@ -42,7 +48,12 @@ export function useSaveSourceCollection() {
   });
 }
 
-export const Route = createFileRoute("/_app/sources")({ component: SourcesPage });
+export const Route = createFileRoute("/_app/sources")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    page: Number(search["page"] ?? 1) || 1,
+  }),
+  component: SourcesPage,
+});
 
 const newItem = (kind: SourceItem["kind"] = "url"): SourceItem =>
   kind === "url"
@@ -50,10 +61,12 @@ const newItem = (kind: SourceItem["kind"] = "url"): SourceItem =>
     : { id: `local-${crypto.randomUUID()}`, kind, enabled: true, query: "" };
 
 function SourcesPage() {
-  const { data } = useSourceCollections();
+  const { page } = Route.useSearch();
+  const navigate = useNavigate();
+  const { data } = useSourceCollections(page);
   const [editing, setEditing] = useState<SourceCollection | "new" | null>(null);
   const remove = useDeleteSourceCollection();
-  const collections = data?.sourceCollections ?? [];
+  const collections = data?.items ?? [];
 
   return (
     <PageGrid>
@@ -69,6 +82,14 @@ function SourcesPage() {
         empty={!collections.length}
         emptyTitle="还没有内容来源"
         emptyDescription="添加网址或搜索词，之后可在多个内容方案中复用。"
+        pagination={
+          <Pagination
+            page={page}
+            pageSize={PAGE_SIZE}
+            total={data?.total ?? 0}
+            onChange={(p) => navigate({ search: { page: p } })}
+          />
+        }
       >
         {collections.map((collection) => (
           <EntityRow

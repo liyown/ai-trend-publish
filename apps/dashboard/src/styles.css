@@ -64,7 +64,14 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: var(--paper);
+  background-color: var(--paper);
+  /* 噪点底纹 + 顶部 accent 色晕光 */
+  background-image:
+    radial-gradient(rgba(17, 17, 17, 0.14) 1px, transparent 1px),
+    radial-gradient(ellipse 85% 50% at 50% -5%, rgba(232, 95, 53, 0.13) 0%, transparent 65%);
+  background-size:
+    16px 16px,
+    100% 100%;
   color: var(--ink);
   font-family: var(--font-sans);
   letter-spacing: 0;

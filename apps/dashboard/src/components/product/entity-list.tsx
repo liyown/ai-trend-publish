@@ -12,6 +12,7 @@ export function EntityList({
   emptyTitle,
   emptyDescription,
   emptyAction,
+  pagination,
   children,
 }: {
   title: string;
@@ -21,6 +22,7 @@ export function EntityList({
   emptyTitle?: string;
   emptyDescription?: string;
   emptyAction?: React.ReactNode;
+  pagination?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -32,7 +34,10 @@ export function EntityList({
           action={emptyAction}
         />
       ) : (
-        children
+        <>
+          {children}
+          {pagination}
+        </>
       )}
     </SetupObjectList>
   );

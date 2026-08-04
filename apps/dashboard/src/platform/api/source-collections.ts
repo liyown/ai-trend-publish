@@ -1,8 +1,11 @@
 import { apiJson, mutation } from "./http.ts";
 import type { SourceCollection, SaveSourceCollectionPayload } from "./types.ts";
+import type { PageResult } from "./content-plans.ts";
 
-export const listSourceCollections = () =>
-  apiJson<{ sourceCollections: SourceCollection[] }>("/api/source-collections");
+export const listSourceCollections = (page = 1, pageSize = 20) =>
+  apiJson<PageResult<SourceCollection>>(
+    `/api/source-collections?page=${page}&pageSize=${pageSize}`,
+  );
 
 export const getSourceCollection = (id: string) =>
   apiJson<{ sourceCollection: SourceCollection }>(

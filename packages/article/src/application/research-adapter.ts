@@ -5,7 +5,7 @@ import type {
   ResearchFetchTool,
   ResearchSearchTool,
   ResearchTool,
-} from "@trendpublish/article";
+} from "../extensions.ts";
 import {
   SourceFetchCapability,
   SourceSearchCapability,

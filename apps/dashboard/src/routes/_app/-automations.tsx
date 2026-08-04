@@ -18,15 +18,21 @@ import { AppDialog, AppDialogFooter } from "#components/product/app-dialog.tsx";
 import { FormField } from "#components/product/form-field.tsx";
 import { Badge } from "#components/ui/badge.tsx";
 import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
+import { Pagination } from "#components/ui/pagination.tsx";
 import { FormError } from "#components/product/form-error.tsx";
 import { PageGrid } from "#components/product/page-grid.tsx";
 import { splitLines } from "#lib/utils.ts";
 import type { Automation, SaveAutomationPayload } from "#platform/api/types.ts";
 
+const PAGE_SIZE = 20;
+
 export const automationsKey = () => ["automations"] as const;
 
-export function useAutomations() {
-  return useQuery({ queryKey: automationsKey(), queryFn: listAutomations });
+export function useAutomations(page = 1) {
+  return useQuery({
+    queryKey: [...automationsKey(), page] as const,
+    queryFn: () => listAutomations(page, PAGE_SIZE),
+  });
 }
 
 export function useDeleteAutomation() {
@@ -62,14 +68,20 @@ const emptyAutomation = (): SaveAutomationPayload => ({
   trigger: { type: "manual" },
 });
 
-export function AutomationsPage() {
-  const { data, error } = useAutomations();
+export function AutomationsPage({
+  page,
+  onPageChange,
+}: {
+  page: number;
+  onPageChange(page: number): void;
+}) {
+  const { data, error } = useAutomations(page);
   const { data: workspace } = useWorkspaceSnapshot({ live: false });
   const [editing, setEditing] = useState<Automation | "new" | null>(null);
   const [running, setRunning] = useState<Automation | null>(null);
   const save = useSaveAutomation();
   const remove = useDeleteAutomation();
-  const automations = data?.automations ?? [];
+  const automations = data?.items ?? [];
   const hasEnabledPlan = workspace?.contentPlans.some((item) => item.enabled) ?? false;
 
   if (error && !data) return null;
@@ -98,6 +110,14 @@ export function AutomationsPage() {
               前往内容方案
             </Button>
           ) : undefined
+        }
+        pagination={
+          <Pagination
+            page={page}
+            pageSize={PAGE_SIZE}
+            total={data?.total ?? 0}
+            onChange={onPageChange}
+          />
         }
       >
         {automations.map((automation) => {

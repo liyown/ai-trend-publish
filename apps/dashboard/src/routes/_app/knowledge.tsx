@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   listKnowledgeBases,
@@ -15,14 +15,20 @@ import { Input } from "#components/ui/input.tsx";
 import { AppDialog, AppDialogFooter } from "#components/product/app-dialog.tsx";
 import { FormField } from "#components/product/form-field.tsx";
 import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
+import { Pagination } from "#components/ui/pagination.tsx";
 import { FormError } from "#components/product/form-error.tsx";
 import { PageGrid } from "#components/product/page-grid.tsx";
 import type { KnowledgeBase, SaveKnowledgeBasePayload } from "#platform/api/types.ts";
 
+const PAGE_SIZE = 20;
+
 export const knowledgeBasesKey = () => ["knowledge-bases"] as const;
 
-export function useKnowledgeBases() {
-  return useQuery({ queryKey: knowledgeBasesKey(), queryFn: listKnowledgeBases });
+export function useKnowledgeBases(page = 1) {
+  return useQuery({
+    queryKey: [...knowledgeBasesKey(), page] as const,
+    queryFn: () => listKnowledgeBases(page, PAGE_SIZE),
+  });
 }
 
 export function useDeleteKnowledgeBase() {
@@ -42,16 +48,23 @@ export function useSaveKnowledgeBase() {
   });
 }
 
-export const Route = createFileRoute("/_app/knowledge")({ component: KnowledgePage });
+export const Route = createFileRoute("/_app/knowledge")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    page: Number(search["page"] ?? 1) || 1,
+  }),
+  component: KnowledgePage,
+});
 
 const blank: SaveKnowledgeBasePayload = { name: "", enabled: true, documents: [] };
 
 function KnowledgePage() {
-  const { data } = useKnowledgeBases();
+  const { page } = Route.useSearch();
+  const navigate = useNavigate();
+  const { data } = useKnowledgeBases(page);
   const save = useSaveKnowledgeBase();
   const remove = useDeleteKnowledgeBase();
   const [editing, setEditing] = useState<KnowledgeBase | "new" | null>(null);
-  const items = data?.knowledgeBases ?? [];
+  const items = data?.items ?? [];
   return (
     <PageGrid>
       <EntityList
@@ -64,6 +77,14 @@ function KnowledgePage() {
           </Button>
         }
         empty={!items.length}
+        pagination={
+          <Pagination
+            page={page}
+            pageSize={PAGE_SIZE}
+            total={data?.total ?? 0}
+            onChange={(p) => navigate({ search: { page: p } })}
+          />
+        }
       >
         {items.map((item) => (
           <EntityRow

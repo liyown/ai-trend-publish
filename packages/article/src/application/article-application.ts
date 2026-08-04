@@ -1,13 +1,15 @@
 import {
   ArticlePipeline,
   type ArticlePipelineResult,
+  type ArticleExecutionPlan,
+} from "../pipeline.ts";
+import type {
   type ArticleInput,
   type ArticleMetadataValue,
   type ArticleSource,
   type AssetRequest,
   type MaterialSnapshot,
-  type ArticleExecutionPlan,
-} from "@trendpublish/article";
+} from "../domain.ts";
 import {
   ArticleResultKind,
   JobType,
@@ -35,9 +37,9 @@ import {
   type ContentPlan,
   type StoredContentPackage,
   type StoredReviewRequest,
-} from "../workspace/domain.ts";
-import type { WorkspaceRepository } from "../workspace/repository.ts";
-import { saveFinalArtifact } from "./artifact-persistence.ts";
+  type WorkspaceRepository,
+  saveFinalArtifact,
+} from "./workspace.ts";
 
 export interface ContentPlanResolver {
   resolve(plan: ContentPlan): Promise<ArticleExecutionPlan>;

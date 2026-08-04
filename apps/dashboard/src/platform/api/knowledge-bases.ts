@@ -1,8 +1,9 @@
 import { apiJson, mutation } from "./http.ts";
 import type { KnowledgeBase, SaveKnowledgeBasePayload } from "./types.ts";
+import type { PageResult } from "./content-plans.ts";
 
-export const listKnowledgeBases = () =>
-  apiJson<{ knowledgeBases: KnowledgeBase[] }>("/api/knowledge-bases");
+export const listKnowledgeBases = (page = 1, pageSize = 20) =>
+  apiJson<PageResult<KnowledgeBase>>(`/api/knowledge-bases?page=${page}&pageSize=${pageSize}`);
 
 export const getKnowledgeBase = (id: string) =>
   apiJson<{ knowledgeBase: KnowledgeBase }>(`/api/knowledge-bases/${encodeURIComponent(id)}`);

@@ -10,16 +10,22 @@ import { Button } from "#components/ui/button.tsx";
 import { AppDialog } from "#components/product/app-dialog.tsx";
 import { Badge } from "#components/ui/badge.tsx";
 import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
+import { Pagination } from "#components/ui/pagination.tsx";
 import { FormError } from "#components/product/form-error.tsx";
 import { PageGrid } from "#components/product/page-grid.tsx";
 import { isResumableJob, jobStatusTone, jobTypeLabel } from "./jobs/-job-presentation.ts";
 import { JobActivityView } from "./jobs/-job-activity-view.tsx";
 
+const PAGE_SIZE = 20;
+
 export const jobsKey = () => ["jobs"] as const;
 export const jobKey = (id: string) => ["jobs", id] as const;
 
-export function useJobs() {
-  return useQuery({ queryKey: jobsKey(), queryFn: listJobs });
+export function useJobs(page = 1) {
+  return useQuery({
+    queryKey: [...jobsKey(), page] as const,
+    queryFn: () => listJobs(page, PAGE_SIZE),
+  });
 }
 
 export function useResumeJob() {
@@ -30,18 +36,33 @@ export function useResumeJob() {
   });
 }
 
-export const Route = createFileRoute("/_app/jobs")({ component: JobsPage });
+export const Route = createFileRoute("/_app/jobs")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    page: Number(search["page"] ?? 1) || 1,
+  }),
+  component: JobsPage,
+});
 
 function JobsPage() {
-  const { data } = useJobs();
+  const { page } = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const { data } = useJobs(page);
   const [selected, setSelected] = useState<string | null>(null);
-  const jobs = data?.jobs ?? [];
+  const jobs = data?.items ?? [];
   return (
     <PageGrid>
       <EntityList
         title="运行记录"
         description="打开任务可查看真实检查点、尝试次数和副作用类型。"
         empty={!jobs.length}
+        pagination={
+          <Pagination
+            page={page}
+            pageSize={PAGE_SIZE}
+            total={data?.total ?? 0}
+            onChange={(p) => navigate({ search: (previous) => ({ ...previous, page: p }) })}
+          />
+        }
       >
         {jobs.map((job) => (
           <EntityRow

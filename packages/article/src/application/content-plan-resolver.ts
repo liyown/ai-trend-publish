@@ -6,20 +6,22 @@ import type {
   AssetRequestType,
   ConfiguredResearchSeed,
   CoverImageGenerationContext,
-  LanguageModel,
-  ArticleExecutionPlan,
   ResearchTool,
-} from "@trendpublish/article";
+} from "../extensions.ts";
+import type { ArticleExecutionPlan } from "../pipeline.ts";
+import type { LanguageModel } from "../operations/language-model.ts";
 import {
   CoverImageProvider,
   CoverRequestTransformer,
+} from "../plugins/cover-image.ts";
+import { EditorialQualityEvaluator } from "../plugins/editorial-quality.ts";
+import { TitleStyleTransformer } from "../plugins/title-style.ts";
+import {
   DefaultArticleReviser,
   DefaultArticleResearcher,
   DefaultArticleWriter,
   DefaultEvidenceSupplementer,
-  EditorialQualityEvaluator,
-  TitleStyleTransformer,
-} from "@trendpublish/article";
+} from "../services/default-article-services.ts";
 import { ArticlePluginId, ChannelId, WorkspaceKind } from "@trendpublish/contracts";
 import {
   ChatCapability,
@@ -29,7 +31,7 @@ import {
   type ConnectorClientResolver,
 } from "@trendpublish/connectors";
 import type { ContentPlanResolver } from "./article-application.ts";
-import type { ContentPlan, WorkspaceRepository } from "../workspace/index.ts";
+import type { ContentPlan, WorkspaceRepository } from "./workspace.ts";
 import { ConnectionResearchAdapter, type ResearchCapability } from "./research-adapter.ts";
 
 export interface WorkspaceContentPlanResolverOptions {

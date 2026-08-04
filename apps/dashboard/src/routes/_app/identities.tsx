@@ -16,15 +16,21 @@ import { Textarea } from "#components/ui/textarea.tsx";
 import { AppDialog, AppDialogFooter } from "#components/product/app-dialog.tsx";
 import { FormField } from "#components/product/form-field.tsx";
 import { EntityList, EntityRow } from "#components/product/entity-list.tsx";
+import { Pagination } from "#components/ui/pagination.tsx";
 import { FormError } from "#components/product/form-error.tsx";
 import { PageGrid } from "#components/product/page-grid.tsx";
 import { splitLines } from "#lib/utils.ts";
 import type { ContentIdentity, SaveIdentityPayload } from "#platform/api/types.ts";
 
+const PAGE_SIZE = 20;
+
 export const identitiesKey = () => ["identities"] as const;
 
-export function useIdentities() {
-  return useQuery({ queryKey: identitiesKey(), queryFn: listIdentities });
+export function useIdentities(page = 1) {
+  return useQuery({
+    queryKey: [...identitiesKey(), page] as const,
+    queryFn: () => listIdentities(page, PAGE_SIZE),
+  });
 }
 
 export function useDeleteIdentity() {
@@ -44,7 +50,12 @@ export function useSaveIdentity() {
   });
 }
 
-export const Route = createFileRoute("/_app/identities")({ component: IdentitiesPage });
+export const Route = createFileRoute("/_app/identities")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    page: Number(search["page"] ?? 1) || 1,
+  }),
+  component: IdentitiesPage,
+});
 
 const blank: SaveIdentityPayload = {
   name: "",
@@ -56,11 +67,13 @@ const blank: SaveIdentityPayload = {
 };
 
 function IdentitiesPage() {
-  const { data } = useIdentities();
+  const { page } = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const { data } = useIdentities(page);
   const [editing, setEditing] = useState<ContentIdentity | "new" | null>(null);
   const save = useSaveIdentity();
   const remove = useDeleteIdentity();
-  const identities = data?.identities ?? [];
+  const identities = data?.items ?? [];
   return (
     <PageGrid>
       <EntityList
@@ -73,6 +86,14 @@ function IdentitiesPage() {
           </Button>
         }
         empty={!identities.length}
+        pagination={
+          <Pagination
+            page={page}
+            pageSize={PAGE_SIZE}
+            total={data?.total ?? 0}
+            onChange={(p) => navigate({ search: (previous) => ({ ...previous, page: p }) })}
+          />
+        }
       >
         {identities.map((identity) => (
           <EntityRow

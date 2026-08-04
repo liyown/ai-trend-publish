@@ -1,5 +1,6 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { PanelLeftClose, PanelLeftOpen, Search, X } from "lucide-react";
+import { motion } from "motion/react";
 import { IconButton } from "#components/ui/button.tsx";
 import { cn } from "#lib/utils.ts";
 import { navDomains, type NavItem } from "./navigation.ts";
@@ -27,7 +28,7 @@ export function ProductSidebar({
       aria-label="工作台导航"
       className={cn(
         "fixed inset-y-0 left-0 z-40 w-[288px] max-w-[calc(100vw-20px)] -translate-x-full overflow-hidden border-r border-[var(--border)] bg-[var(--surface)] shadow-xl transition-[transform,width]",
-        "lg:inset-y-3 lg:left-3 lg:translate-x-0 lg:rounded-[var(--radius-lg)] lg:border lg:border-[color-mix(in_srgb,var(--border)_82%,transparent)] lg:shadow-[var(--shadow-card)]",
+        "lg:inset-y-2 lg:left-2 lg:translate-x-0 lg:rounded-[var(--radius-lg)] lg:border lg:border-[color-mix(in_srgb,var(--border)_82%,transparent)] lg:shadow-[var(--shadow-card)]",
         collapsed ? "lg:w-[72px]" : "lg:w-[252px]",
         open && "translate-x-0",
       )}
@@ -49,14 +50,14 @@ export function ProductSidebar({
               void navigate({ to: "/workspace" });
             }}
           >
-            <span className="grid size-9 shrink-0 place-items-center rounded-[10px] border border-[var(--border)] text-xs font-black">
+            <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[var(--accent)] text-[var(--accent-ink)] text-xs font-black">
               TP
             </span>
             <span className={cn("min-w-0", collapsed && "lg:hidden")}>
               <span className="block text-[10px] font-semibold uppercase text-[var(--muted)]">
                 TrendPublish
               </span>
-              <span className="mt-0.5 block truncate text-base font-semibold">内容工作台</span>
+              <span className="mt-0.5 block truncate text-sm font-semibold">内容工作台</span>
             </span>
           </button>
           <IconButton
@@ -78,14 +79,14 @@ export function ProductSidebar({
         </div>
         <nav
           aria-label="工作台入口"
-          className={cn("min-h-0 flex-1 overflow-y-auto px-4 py-4", collapsed && "lg:px-2")}
+          className={cn("min-h-0 flex-1 overflow-y-auto px-3 py-3", collapsed && "lg:px-2")}
         >
-          <div className="grid gap-5">
+          <div className="grid gap-3">
             {navDomains.map((domain) => (
               <section key={domain.id} className="grid gap-1">
                 <div
                   className={cn(
-                    "px-1.5 text-[11px] font-semibold text-[var(--muted)]",
+                    "px-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]",
                     collapsed && "lg:sr-only",
                   )}
                 >
@@ -101,15 +102,30 @@ export function ProductSidebar({
                       onClick={onSelect}
                       title={collapsed ? item.label : undefined}
                       className={cn(
-                        "flex min-h-10 items-center gap-2 rounded-[10px] px-2 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
+                        "relative flex min-h-10 items-center gap-2 rounded-[10px] px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
                         collapsed && "lg:size-10 lg:justify-center lg:px-0",
                         active
-                          ? "bg-[var(--surface-3)] font-semibold text-[var(--ink)]"
-                          : "text-[var(--muted-strong)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)]",
+                          ? "font-semibold text-[var(--ink)]"
+                          : "text-[var(--muted-strong)] hover:text-[var(--ink)]",
                       )}
                     >
-                      <Icon className="size-4 shrink-0" />
-                      <span className={cn("truncate", collapsed && "lg:hidden")}>{item.label}</span>
+                      {/* 滑动指示器背景 */}
+                      {active && !collapsed && (
+                        <motion.span
+                          layoutId="nav-active-bg"
+                          aria-hidden
+                          className="absolute inset-0 rounded-[10px] border-l-2 border-[var(--accent)] bg-[var(--surface-3)]"
+                          transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                        />
+                      )}
+                      {/* collapsed 状态下用简单背景 */}
+                      {active && collapsed && (
+                        <span className="absolute inset-0 rounded-[10px] bg-[var(--surface-3)]" />
+                      )}
+                      <Icon className="relative z-[1] size-4 shrink-0" />
+                      <span className={cn("relative z-[1] truncate", collapsed && "lg:hidden")}>
+                        {item.label}
+                      </span>
                     </Link>
                   );
                 })}

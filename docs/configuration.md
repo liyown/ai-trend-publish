@@ -593,6 +593,7 @@ Axiom 需要先创建 dataset 和带 ingest 权限的 API token。Better Stack L
 - DeepSeek: `baseUrl: "https://api.deepseek.com/v1"`，`model: "deepseek-chat"`
 - Qwen:
   `baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1"`，`model: "qwen-max"`
+- OrcaRouter: `baseUrl: "https://api.orcarouter.ai/v1"`，`model: "orcarouter/fusion-flash"`
 
 ## 提示词风格
 

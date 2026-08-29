@@ -309,6 +309,9 @@ features: {
 - 通义千问 / DashScope：[申请地址](https://bailian.console.aliyun.com/)；\
   `baseUrl` 填 `https://dashscope.aliyuncs.com/compatible-mode/v1`；常用模型为\
   `qwen-plus`、`qwen-max`。
+- OrcaRouter：[官网](https://www.orcarouter.ai)；`baseUrl` 填
+  `https://api.orcarouter.ai/v1`；常用模型为 `orcarouter/fusion-flash`、
+  `orcarouter/fusion-mini`。
 
 ### 数据源获取
 

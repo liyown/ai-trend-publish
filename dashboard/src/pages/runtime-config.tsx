@@ -30,6 +30,7 @@ const FETCH_PROVIDER_OPTIONS = [
   "firecrawl",
   "jina",
   "jina-search",
+  "parallel-search",
   "brave-search",
   "tavily-search",
   "exa-search",

@@ -11,6 +11,7 @@ export type ArticleSourceFilter =
   | "firecrawl"
   | "jina"
   | "jina-search"
+  | "parallel-search"
   | "brave-search"
   | "tavily-search"
   | "exa-search"
@@ -354,6 +355,7 @@ function appendLinkedArticleCandidates(
   const candidates: ScrapedContent[] = [];
 
   for (const content of contents) {
+    if (content.metadata.provider === "parallel-search") continue;
     if (candidates.length >= MAX_LINK_CANDIDATES_PER_SOURCE) break;
     const links = extractArticleLinks(content);
     if (links.length < 3) continue;

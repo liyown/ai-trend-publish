@@ -17,6 +17,7 @@ import type {
   ArticleContentFetchResult,
   ArticleContentHydrationResult,
 } from "@src/features/weixin-article/services/content-scrape.service.ts";
+import { planArticleSources } from "./article-fetch-planner.ts";
 
 type ArticleFetchProvider = FetchProviderId;
 
@@ -49,6 +50,20 @@ export class ArticleFetchRouter implements ArticleContentFetcher {
 
     for (const provider of source.providers as ArticleFetchProvider[]) {
       try {
+        if (provider === "parallel-search") {
+          const authorized = this.config && source.kind === "query" &&
+            source.group !== "default" &&
+            planArticleSources(this.config).some((planned) =>
+              planned.raw === source.raw && planned.url === source.url &&
+              planned.group === source.group &&
+              planned.providers.includes(provider)
+            );
+          if (!authorized) {
+            throw new Error(
+              "Parallel 仅允许显式配置的操作员公开软件发布文档查询",
+            );
+          }
+        }
         const contents = await this.getScraper(provider).scrape(source.url);
         if (contents.length > 0) {
           return {
@@ -85,6 +100,17 @@ export class ArticleFetchRouter implements ArticleContentFetcher {
   ): Promise<ArticleContentHydrationResult> {
     const originalContentLength = content.content.length;
     const failures: ArticleContentFetchFailure[] = [];
+
+    // Parallel intake uses search excerpts only; never fetch result pages.
+    if (content.metadata.provider === "parallel-search") {
+      return {
+        content,
+        hydrated: false,
+        failures,
+        originalContentLength,
+        hydratedContentLength: originalContentLength,
+      };
+    }
 
     if (!isHttpUrl(content.url)) {
       return {

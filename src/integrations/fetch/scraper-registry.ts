@@ -14,6 +14,7 @@ import { JinaDeepSearchScraper } from "@src/integrations/fetch/providers/jina/ji
 import { JinaScraper } from "@src/integrations/fetch/providers/jina/jina-reader-scraper.ts";
 import { JinaSearchScraper } from "@src/integrations/fetch/providers/jina/jina-search-scraper.ts";
 import { NewsApiScraper } from "@src/integrations/fetch/providers/newsapi-scraper.ts";
+import { ParallelSearchScraper } from "@src/integrations/fetch/providers/parallel-search-scraper.ts";
 import { RsshubScraper } from "@src/integrations/fetch/providers/rsshub-scraper.ts";
 import { ScraperType } from "@src/integrations/fetch/scraper-type.ts";
 import { SerperSearchScraper } from "@src/integrations/fetch/providers/serper-search-scraper.ts";
@@ -56,6 +57,17 @@ scraperRegistry.register({
   isConfigured: (config) => Boolean(config.providers.fetch.jina.apiKey),
   create: (context) =>
     new JinaDeepSearchScraper(context?.config?.providers.fetch.jina.apiKey),
+});
+
+scraperRegistry.register({
+  id: ScraperType.PARALLEL_SEARCH,
+  kind: "fetch",
+  isConfigured: (config) =>
+    Boolean(config.providers.fetch.parallel?.publicReleaseQueries.length),
+  create: (context) =>
+    new ParallelSearchScraper(
+      context?.config?.providers.fetch.parallel?.publicReleaseQueries,
+    ),
 });
 
 scraperRegistry.register({

@@ -17,6 +17,7 @@ export type FetchProviderName =
   | "firecrawl"
   | "jina"
   | "jina-search"
+  | "parallel-search"
   | "brave-search"
   | "tavily-search"
   | "exa-search"
@@ -84,6 +85,10 @@ export interface OpenAICompatibleConfig {
 
 /** 内容抓取供应商凭证。只需要填写数据源实际会用到的 provider。 */
 export interface FetchProvidersConfig {
+  /** 仅显式数据源可用；只发送操作员在此列出的公开软件发布文档查询。 */
+  parallel?: {
+    publicReleaseQueries?: string[];
+  };
   /** FireCrawl API Key。用于普通网页抓取和 web 类抓取分组。 */
   firecrawl?: {
     apiKey?: string;
@@ -525,6 +530,9 @@ export interface ResolvedTrendPublishConfig {
   providers: {
     ai: Required<OpenAICompatibleConfig>;
     fetch: {
+      parallel?: {
+        publicReleaseQueries: string[];
+      };
       firecrawl: {
         apiKey: string;
       };
@@ -813,6 +821,10 @@ export function resolveTrendPublishConfig(
         maxAttempts: config.providers?.ai?.maxAttempts ?? 2,
       },
       fetch: {
+        parallel: {
+          publicReleaseQueries: config.providers?.fetch?.parallel
+            ?.publicReleaseQueries ?? [],
+        },
         firecrawl: {
           apiKey: config.providers?.fetch?.firecrawl?.apiKey ?? "",
         },

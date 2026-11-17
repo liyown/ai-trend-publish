@@ -12,6 +12,7 @@ export type FetchProviderId = Exclude<FetchProviderName, "auto">;
 export type SearchFetchProviderId = Extract<
   FetchProviderId,
   | "jina-search"
+  | "parallel-search"
   | "brave-search"
   | "tavily-search"
   | "exa-search"
@@ -24,6 +25,7 @@ export type SearchFetchProviderId = Extract<
 
 const searchFetchProviders = new Set<FetchProviderId>([
   "jina-search",
+  "parallel-search",
   "brave-search",
   "tavily-search",
   "exa-search",
@@ -85,6 +87,15 @@ fetchProviderRegistry.register({
   kind: "fetch",
   scraperType: ScraperType.JINA_SEARCH,
   isConfigured: (config) => Boolean(config.providers.fetch.jina.apiKey),
+  matches: () => false,
+});
+
+fetchProviderRegistry.register({
+  id: "parallel-search",
+  kind: "fetch",
+  scraperType: ScraperType.PARALLEL_SEARCH,
+  isConfigured: (config) =>
+    Boolean(config.providers.fetch.parallel?.publicReleaseQueries.length),
   matches: () => false,
 });
 

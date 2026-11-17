@@ -1044,6 +1044,7 @@ const FETCH_PROVIDER_NAMES = new Set<string>([
   "firecrawl",
   "jina",
   "jina-search",
+  "parallel-search",
   "brave-search",
   "tavily-search",
   "exa-search",

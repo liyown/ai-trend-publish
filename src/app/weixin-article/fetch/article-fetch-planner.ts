@@ -37,7 +37,11 @@ export function planArticleSources(
       source.url,
       groupProviders,
       source.kind,
+      source.group !== "default",
     );
+    if (!providers.length) {
+      throw new Error(`数据源 ${source.raw} 没有可用的显式抓取 provider`);
+    }
     validateSourceProviders(source.url, source.kind, providers, config);
 
     return {
@@ -51,12 +55,17 @@ export function resolveSourceProviders(
   sourceValue: string,
   groupProviders: FetchProviderName[],
   kind: ArticleSourceKind = "url",
+  // Supplemental research shares this resolver; operator-only providers are
+  // excluded unless the source planner explicitly opts in for a named group.
+  operatorIntake = false,
 ): ArticleFetchProvider[] {
   if (groupProviders.length === 0) {
     throw new Error(`数据源 ${sourceValue} 的抓取分组未配置任何 provider`);
   }
 
-  const providers = groupProviders.flatMap((provider) =>
+  const providers = groupProviders.filter((provider) =>
+    provider !== "parallel-search" || operatorIntake
+  ).flatMap((provider) =>
     provider === "auto" ? [inferProvider(sourceValue, kind)] : [provider]
   );
   return [...new Set(providers)] as ArticleFetchProvider[];
@@ -77,6 +86,16 @@ function validateSourceProviders(
   config: Pick<ResolvedTrendPublishConfig, "providers">,
 ): void {
   for (const provider of providers) {
+    if (
+      provider === "parallel-search" &&
+      !config.providers.fetch.parallel?.publicReleaseQueries.includes(
+        sourceValue,
+      )
+    ) {
+      throw new Error(
+        "Parallel 仅允许 providers.fetch.parallel.publicReleaseQueries 中操作员明确提供的公开软件发布文档查询",
+      );
+    }
     if (kind === "query" && !isSearchFetchProvider(provider)) {
       throw new Error(
         `搜索数据源 ${sourceValue} 只能使用搜索类 provider`,

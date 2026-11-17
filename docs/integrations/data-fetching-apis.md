@@ -61,6 +61,63 @@ fetchGroups: {
 
 只把已经配置好 key 的付费 provider 放进分组。否则 doctor 会提示缺少对应凭证。
 
+## 显式公开软件发布查询（Parallel）
+
+`parallel-search` 使用 Unified MCP 的 `web_search`，将搜索结果中的原始 URL、
+标题和摘录交给现有文章流程。不需要 API Key；服务可用性和限制见
+[Parallel MCP setup](https://docs.parallel.ai/integrations/mcp/quickstart)。
+
+只有操作员明确授权的**公开软件发布文档查询**可用。先在部署配置中填写
+`providers.fetch.parallel.publicReleaseQueries`，再通过命名抓取分组选择：
+
+```ts
+providers: {
+  fetch: {
+    parallel: {
+      publicReleaseQueries: ["Deno 2.7 release documentation"],
+    },
+  },
+},
+fetchGroups: {
+  default: ["auto"],
+  releases: ["parallel-search"],
+},
+features: {
+  article: {
+    dryRun: true,
+    sources: ["releases:query:Deno 2.7 release documentation"],
+    sourceLimits: { maxAgeDays: 365, maxItemsPerSource: 5 },
+  },
+},
+```
+
+查询必须与授权列表中的字符串完全匹配。只授权公开发布信息；不要填写私有上下文、
+账号信息或内部资料。请求仅将该字符串作为 `objective` 和单个 `search_queries`
+发送，不附加文章、模型生成的查询或账号上下文。连接地址为
+`https://mcp.parallel.ai/mcp?tools=web_search`，不会调用 `web_fetch`，也不会深抓
+Parallel 结果页或从摘录扩展文章链接。
+
+授权列表默认为空。`auto`、`default` 分组和补充研究不会选择 Parallel，即使
+`fetchGroups.search` 或自定义配置包含它；其他 provider 的 fallback
+顺序保持不变。 空结果、服务错误和 30
+秒超时通过现有数据源失败记录返回，可继续尝试同组其他 provider。
+
+用独立配置和独立 SQLite/产物目录运行本地检查，避免复用 Dashboard
+中已有的数据源。 完整 dry-run 需要配置 LLM；可将 LLM
+指向本地兼容服务，并关闭配图、通知和向量去重。
+
+```bash
+# 先检查数据源；不进入模型或发布链路
+deno task article --config /tmp/trendpublish-parallel.ts --sources-only --source parallel-search
+
+# 官方 dry-run：不上传、不发布
+deno task article --config /tmp/trendpublish-parallel.ts --dry-run --source parallel-search --dry-run-output src/temp/parallel-output
+```
+
+完整 dry-run 的 `02-scraped-contents`、`07-processed-contents` 和 template-data
+JSON 产物保留结果原始 URL，HTML 在同次运行的 `dry-run-preview` 产物中。
+页面链接是否出现在正文中仍由现有模板和正文生成决定；请同时检查 JSON 来源字段。
+
 ## URL 抓取来源
 
 - FireCrawl：普通网页正文抓取。Provider 名称：`firecrawl`。

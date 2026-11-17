@@ -157,6 +157,7 @@ const ARTICLE_SOURCE_FILTERS = new Set<ArticleSourceFilter>([
   "firecrawl",
   "jina",
   "jina-search",
+  "parallel-search",
   "brave-search",
   "tavily-search",
   "exa-search",

@@ -399,10 +399,13 @@ providers: {
 },
 features: {
   article: {
-    cover: { enabled: true, provider: "minimax", model: "image-01" },
+    cover: { enabled: true, provider: "minimax", model: "MiniMax-H3-Image-Highspeed" },
   },
 },
 ```
+
+H3 uses `https://api.minimax.io` by default. For a China API key, set
+`providers.image.minimax.apiHost` to `https://api.minimax.cn`.
 
 封面生成失败不会中断主流程，会回退默认封面。
 
@@ -436,7 +439,7 @@ features: {
     bodyImages: {
       mode: "missing",
       provider: "minimax",
-      model: "image-01",
+      model: "MiniMax-H3-Image",
       count: 1,
       size: "1024*1024",
     },

@@ -80,3 +80,89 @@ Deno.test("MiniMaxImageGenerator requires api key", async () => {
     "providers.image.minimax.apiKey is not set",
   );
 });
+
+Deno.test("H3 uses the configured host and returns the first successful output", async () => {
+  const prompt = "A landscape. ".repeat(150).trim();
+  const httpClient = {
+    request: async <T>(
+      url: string,
+      req: RequestInit & { timeout: number; retries: number },
+    ): Promise<T> => {
+      assertEquals(url, "https://api.minimax.cn/v1/images/generations");
+      assertEquals(req.retries, 1);
+      assertEquals(req.timeout, 600_000);
+      assertEquals(req.method, "POST");
+      assertEquals(new Headers(req.headers).get("Authorization"), "Bearer key");
+      assertEquals(JSON.parse(String(req.body)), {
+        model: "MiniMax-H3-Image",
+        prompt,
+        n: 10,
+        response_format: "url",
+        size: "2720x1536",
+      });
+      return {
+        data: [{ error: { message: "withheld" } }, {
+          url: "https://example.com/map.jpg",
+        }],
+      } as T;
+    },
+  } as unknown as HttpClient;
+  const gen = new MiniMaxImageGenerator(
+    "key",
+    "https://api.minimax.cn/",
+    httpClient,
+  );
+  await gen.initialize();
+  assertEquals(
+    await gen.generate({
+      model: "MiniMax-H3-Image",
+      prompt,
+      n: 10,
+      size: "2720*1536",
+    }),
+    "https://example.com/map.jpg",
+  );
+});
+
+Deno.test("H3 Highspeed maps base64 and aspect ratio options", async () => {
+  const httpClient = {
+    request: async <T>(url: string, req: RequestInit): Promise<T> => {
+      assertEquals(url, "https://api.minimax.io/v1/images/generations");
+      assertEquals(JSON.parse(String(req.body)), {
+        model: "MiniMax-H3-Image-Highspeed",
+        prompt: "A map",
+        n: 1,
+        response_format: "b64_json",
+        aspect_ratio: "3:2",
+        disable_prompt_enhanced: true,
+      });
+      return { data: [{ b64_json: "YWJj" }] } as T;
+    },
+  } as unknown as HttpClient;
+  const gen = new MiniMaxImageGenerator("key", undefined, httpClient);
+  await gen.initialize();
+  assertEquals(
+    await gen.generate({
+      model: "MiniMax-H3-Image-Highspeed",
+      prompt: "A map",
+      response_format: "base64",
+      size: "1024*1024",
+      aspect_ratio: "3:2",
+      prompt_optimizer: false,
+    }),
+    "data:image/jpeg;base64,YWJj",
+  );
+});
+
+Deno.test("H3 reports a per-image error when no image was returned", async () => {
+  const gen = new MiniMaxImageGenerator("key", undefined, {
+    request: () =>
+      Promise.resolve({ data: [{ error: { message: "withheld" } }] }),
+  } as unknown as HttpClient);
+  await gen.initialize();
+  await assertRejects(
+    () => gen.generate({ model: "MiniMax-H3-Image", prompt: "A map" }),
+    Error,
+    "withheld",
+  );
+});

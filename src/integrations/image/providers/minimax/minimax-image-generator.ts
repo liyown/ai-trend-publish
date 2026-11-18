@@ -2,6 +2,13 @@ import { BaseImageGenerator } from "@src/integrations/image/providers/base-image
 import { HttpClient } from "@src/utils/http/http-client.ts";
 
 export const MINIMAX_DEFAULT_IMAGE_MODEL = "image-01";
+export const MINIMAX_H3_TIMEOUT_MS = 600_000;
+
+export function isMiniMaxH3ImageModel(model?: string): boolean {
+  return model?.trim() === "MiniMax-H3-Image" ||
+    model?.trim() === "MiniMax-H3-Image-Highspeed";
+}
+
 const MINIMAX_DEFAULT_API_HOST = "https://api.minimax.io";
 
 export interface MiniMaxImageOptions {
@@ -11,7 +18,7 @@ export interface MiniMaxImageOptions {
   aspect_ratio?: string;
   n?: number;
   prompt_optimizer?: boolean;
-  response_format?: "url" | "base64";
+  response_format?: "url" | "base64" | "b64_json";
   seed?: number;
   title?: string;
   sub_title?: string;
@@ -33,6 +40,14 @@ interface MiniMaxImageGenerationResponse {
     status_code?: number;
     status_msg?: string;
   };
+}
+
+interface MiniMaxH3Response {
+  data?: Array<{
+    url?: string;
+    b64_json?: string;
+    error?: { message?: string };
+  }>;
 }
 
 export class MiniMaxImageGenerator extends BaseImageGenerator<
@@ -65,10 +80,16 @@ export class MiniMaxImageGenerator extends BaseImageGenerator<
       throw new Error("MiniMax 图片生成需要 prompt 或标题提示词");
     }
 
+    const model = normalizeMiniMaxImageModel(options.model);
+    if (isMiniMaxH3ImageModel(model)) {
+      return await this.generateH3(options, model, prompt);
+    }
     const payload: Record<string, unknown> = {
-      model: normalizeMiniMaxImageModel(options.model),
+      model,
       prompt: prompt.slice(0, 1500),
-      response_format: options.response_format ?? "url",
+      response_format: options.response_format === "b64_json"
+        ? "base64"
+        : options.response_format ?? "url",
       n: clampInteger(options.n, 1, 9, 1),
       prompt_optimizer: options.prompt_optimizer ?? true,
     };
@@ -90,20 +111,10 @@ export class MiniMaxImageGenerator extends BaseImageGenerator<
       payload.seed = Math.trunc(options.seed);
     }
 
-    const response = await this.httpClient.request<
-      MiniMaxImageGenerationResponse
-    >(
-      `${this.apiHost}/v1/image_generation`,
-      {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-        retries: 1,
-        timeout: 90000,
-      },
+    const response = await this.post<MiniMaxImageGenerationResponse>(
+      "/v1/image_generation",
+      payload,
+      90000,
     );
 
     if (
@@ -121,6 +132,68 @@ export class MiniMaxImageGenerator extends BaseImageGenerator<
     if (base64) return `data:image/jpeg;base64,${base64}`;
 
     throw new Error("MiniMax 图片生成成功但未返回图片 URL");
+  }
+
+  private async generateH3(
+    options: MiniMaxImageOptions,
+    model: string,
+    prompt: string,
+  ): Promise<string> {
+    if (options.seed !== undefined) {
+      throw new Error("MiniMax H3 text-to-image does not support seed");
+    }
+
+    const payload: Record<string, unknown> = {
+      model,
+      prompt,
+      response_format: options.response_format === "base64"
+        ? "b64_json"
+        : options.response_format ?? "url",
+      n: clampInteger(options.n, 1, 10, 1),
+    };
+    if (options.aspect_ratio) {
+      payload.aspect_ratio = options.aspect_ratio;
+    } else if (options.size) {
+      payload.size = options.size.replace("*", "x");
+    }
+    if (options.prompt_optimizer !== undefined) {
+      payload.disable_prompt_enhanced = !options.prompt_optimizer;
+    }
+
+    const response = await this.post<MiniMaxH3Response>(
+      "/v1/images/generations",
+      payload,
+      MINIMAX_H3_TIMEOUT_MS,
+    );
+    const items = response.data ?? [];
+    for (const item of items) {
+      if (item.url?.trim()) return item.url;
+      if (item.b64_json?.trim()) {
+        return `data:image/jpeg;base64,${item.b64_json}`;
+      }
+    }
+    throw new Error(
+      items.find((item) => item.error?.message)?.error?.message ??
+        "MiniMax H3 returned no image",
+    );
+  }
+
+  private post<T>(
+    path: string,
+    payload: Record<string, unknown>,
+    timeout: number,
+  ): Promise<T> {
+    return this.httpClient.request<T>(`${this.apiHost}${path}`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${this.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+      // HttpClient counts total attempts. A generation must only be submitted once.
+      retries: 1,
+      timeout,
+    });
   }
 }
 

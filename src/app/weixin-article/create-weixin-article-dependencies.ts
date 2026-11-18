@@ -4,6 +4,10 @@ import { WeixinPublisher } from "@src/integrations/publish/providers/weixin-publ
 import { WeixinRelayPublisher } from "@src/integrations/publish/providers/weixin-relay-publisher.ts";
 import { WeixinArticleTemplateRenderer } from "@src/features/weixin-article/rendering/article.renderer.ts";
 import { WeixinDynamicHtmlGenerator } from "@src/features/weixin-article/rendering/dynamic/dynamic-html.generator.ts";
+import {
+  isMiniMaxH3ImageModel,
+  MINIMAX_H3_TIMEOUT_MS,
+} from "@src/integrations/image/providers/minimax/minimax-image-generator.ts";
 import { ImageGeneratorResolver } from "@src/integrations/image/image-generator-resolver.ts";
 import { LlmProviderResolver } from "@src/integrations/llm/llm-provider-resolver.ts";
 import { EmbeddingProviderResolver } from "@src/integrations/vector/embedding-provider-resolver.ts";
@@ -87,6 +91,7 @@ export async function createWeixinArticleDependencies(
   const llmProvider = await llmResolver.getDefaultProvider();
   const imageGeneratorResolver = new ImageGeneratorResolver(config);
   const embeddingResolver = new EmbeddingProviderResolver(config);
+  const cover = config.features.article.cover;
   const bodyImages = config.features.article.bodyImages;
   const deduplication = config.features.article.deduplication;
   const renderer = config.features.article.renderer;
@@ -152,12 +157,12 @@ export async function createWeixinArticleDependencies(
       publisher,
       imageGeneratorResolver,
       promptProfile,
-      config.features.article.cover.model,
-      resolveImageGeneratorType(
-        config.features.article.cover.provider,
-        "cover",
-      ),
+      cover.model,
+      resolveImageGeneratorType(cover.provider, "cover"),
       accountBrand,
+      cover.provider === "minimax" && isMiniMaxH3ImageModel(cover.model)
+        ? { generationMs: MINIMAX_H3_TIMEOUT_MS }
+        : undefined,
     ),
     renderService: new WeixinArticleRenderService(
       new WeixinArticleTemplateRenderer(
